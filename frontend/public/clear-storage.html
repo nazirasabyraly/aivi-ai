@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Очистка localStorage</title>
+</head>
+<body>
+    <h1>Очистка localStorage</h1>
+    <p>Нажмите кнопку ниже для очистки localStorage:</p>
+    <button onclick="clearStorage()">Очистить localStorage</button>
+    <script>
+        function clearStorage() {
+            localStorage.removeItem('ngrok_backend_url');
+            alert('localStorage очищен! Теперь перейдите на http://localhost:3000');
+            window.location.href = 'http://localhost:3000';
+        }
+        
+        // Автоматически очищаем при загрузке страницы
+        localStorage.removeItem('ngrok_backend_url');
+        console.log('localStorage очищен автоматически');
+    </script>
+</body>
+</html> 

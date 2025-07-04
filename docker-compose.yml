@@ -1,0 +1,109 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: nfac_db
+      POSTGRES_USER: nfac_user
+      POSTGRES_PASSWORD: nfac_strong_password_123
+    ports:
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nfac_user -d nfac_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./.env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/audio_cache:/app/audio_cache
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      - VITE_API_URL=https://aivi-ai.it.com/api
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+
+# services:
+#   # PostgreSQL база данных
+#   db:
+#     image: postgres:15-alpine
+#     restart: always
+#     environment:
+#       POSTGRES_DB: ${POSTGRES_DB:-nfac_db}
+#       POSTGRES_USER: ${POSTGRES_USER:-nfac_user}
+#       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nfac_password}
+#     ports:
+#       - "5434:5432"
+#     volumes:
+#       - postgres_data:/var/lib/postgresql/data
+#     healthcheck:
+#       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nfac_user}"]
+#       interval: 10s
+#       timeout: 5s
+#       retries: 5
+
+#   # FastAPI Backend
+#   backend:
+#     build:
+#       context: ./backend
+#       dockerfile: Dockerfile
+#     ports:
+#       - "8000:8000"
+#     environment:
+#       - DATABASE_URL=postgresql://${POSTGRES_USER:-nfac_user}:${POSTGRES_PASSWORD:-nfac_password}@db:5432/${POSTGRES_DB:-nfac_db}
+#       - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY}
+#       - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
+#       - AZURE_OPENAI_DEPLOYMENT_NAME=${AZURE_OPENAI_DEPLOYMENT_NAME}
+#       - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION}
+#       - SECRET_KEY=${SECRET_KEY:-your-secret-key-here}
+#       - RIFFUSION_API_KEY=${RIFFUSION_API_KEY}
+#       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
+#       - OPENAI_API_KEY=${OPENAI_API_KEY}
+#     volumes:
+#       - ./backend/audio_cache:/app/audio_cache
+#     depends_on:
+#       db:
+#         condition: service_healthy
+#     restart: unless-stopped
+
+#   # React Frontend
+#   frontend:
+#     build:
+#       context: ./frontend
+#       dockerfile: Dockerfile
+#     ports:
+#       - "3000:3000"
+#     environment:
+#       - VITE_API_URL=http://localhost:8000
+#     depends_on:
+#       - backend
+#     restart: unless-stopped
+
+# volumes:
+#   postgres_data: 

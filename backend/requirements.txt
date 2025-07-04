@@ -1,0 +1,19 @@
+fastapi
+uvicorn[standard]
+httpx
+python-dotenv
+python-multipart
+openai
+pydantic[email]
+email-validator
+sqlalchemy
+passlib[bcrypt]
+python-jose[cryptography]
+python-multipart
+psycopg2-binary
+requests
+alembic
+yt-dlp
+ffmpeg-python
+
+# Для генерации музыки через suno.ai требуется Node.js и puppeteer (npm install puppeteer)
