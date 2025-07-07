@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, status
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, status, Form
 from fastapi.responses import JSONResponse
 from typing import Dict, Any, List
 import json
@@ -8,7 +8,7 @@ from ..dependencies import get_current_user
 from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models.user import SavedSong, User, ChatMessage
-from ..schemas import ChatMessageCreate, ChatMessageOut, GenerateBeatRequest, GenerateBeatResponse, GenerateBeatStatusRequest
+from ..schemas import ChatMessageCreate, ChatMessageOut, GenerateBeatRequest, GenerateBeatResponse, GenerateBeatStatusRequest, RecommendationsRequest
 import asyncio
 import os
 import requests
@@ -24,13 +24,14 @@ os.makedirs(AUDIO_CACHE_DIR, exist_ok=True)
 @router.post("/analyze-media")
 async def analyze_media(
     file: UploadFile = File(...),
-    user_id: str = None
+    user_id: str = Form(None),
+    language: str = Form("ru")  # Получаем язык из FormData
 ):
     """
     Анализирует загруженный медиафайл и возвращает анализ настроения
     """
     try:
-        print(f"🔍 Получен файл: {file.filename}, размер: {file.size}, тип: {file.content_type}")
+        print(f"🔍 Получен файл: {file.filename}, размер: {file.size}, тип: {file.content_type}, язык: {language}")
         
         # Проверяем размер файла
         if file.size and file.size > MAX_FILE_SIZE:
@@ -50,8 +51,8 @@ async def analyze_media(
         
         print("🚀 Начинаем анализ медиафайла...")
         
-        # Анализируем медиафайл
-        analysis = await openai_service.analyze_media_mood(file)
+        # Анализируем медиафайл с учетом языка
+        analysis = await openai_service.analyze_media_mood(file, language=language)
         
         print(f"📊 Результат анализа: {analysis}")
         
@@ -67,6 +68,7 @@ async def analyze_media(
 @router.post("/get-recommendations")
 async def get_music_recommendations(
     mood_analysis: Dict[str, Any],
+    language: str = "ru",  # Добавляем параметр языка
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -85,12 +87,12 @@ async def get_music_recommendations(
             "top_artists": list({s.artist for s in saved_songs if s.artist}),
             "top_tracks": list({s.title for s in saved_songs if s.title})
         } if saved_songs else global_prefs
-        print(f"[RECOMMEND] mood_analysis: {mood_analysis}")
+        print(f"[RECOMMEND] mood_analysis: {mood_analysis}, language: {language}")
         print(f"[RECOMMEND] personal_prefs: {personal_prefs}")
         try:
             print("[RECOMMEND] Запрашиваем рекомендации у OpenAI...")
-            global_task = openai_service.get_music_recommendations(mood_analysis, global_prefs, n_tracks=5)
-            personal_task = openai_service.get_music_recommendations(mood_analysis, personal_prefs, n_tracks=5)
+            global_task = openai_service.get_music_recommendations(mood_analysis, global_prefs, n_tracks=5, language=language)
+            personal_task = openai_service.get_music_recommendations(mood_analysis, personal_prefs, n_tracks=5, language=language)
             global_rec, personal_rec = await asyncio.wait_for(
                 asyncio.gather(global_task, personal_task), timeout=60.0
             )
@@ -305,6 +307,7 @@ async def check_generation_status(request: GenerateBeatStatusRequest):
                 audio_url = data["data"][0].get("stream_audio_url")
                 if audio_url:
                     try:
+                        print(f"Скачиваем аудио файл: {audio_url}")
                         audio_resp = requests.get(audio_url, timeout=120)
                         if audio_resp.status_code == 200:
                             # Сохраняем файл
@@ -316,11 +319,14 @@ async def check_generation_status(request: GenerateBeatStatusRequest):
                             
                             # Обновляем результат с локальным путем
                             result["local_audio_url"] = f"/audio_cache/{filename}"
+                            print(f"Файл сохранен как: {file_path}, URL: {result['local_audio_url']}")
                             
                     except Exception as e:
                         print(f"Ошибка скачивания аудио: {e}")
         
+        print(f"Возвращаем результат: {result}")
         return JSONResponse(content={"success": True, "status": result})
         
     except Exception as e:
+        print(f"Ошибка в check_generation_status: {e}")
         return JSONResponse(content={"success": False, "error": str(e)}) 

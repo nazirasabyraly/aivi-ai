@@ -34,7 +34,7 @@ class OpenAIService:
         else:
             raise ValueError("Не настроен ни Azure OpenAI, ни OpenAI API")
     
-    async def analyze_media_mood(self, file: UploadFile) -> Dict[str, Any]:
+    async def analyze_media_mood(self, file: UploadFile, language: str = "ru") -> Dict[str, Any]:
         """
         Анализирует медиафайл и определяет настроение/вайб
         """
@@ -46,9 +46,9 @@ class OpenAIService:
             file_type = self._get_file_type(file.filename)
             
             if file_type == "image":
-                return await self._analyze_image(file_content, file.filename)
+                return await self._analyze_image(file_content, file.filename, language)
             elif file_type == "video":
-                return await self._analyze_video(file_content, file.filename)
+                return await self._analyze_video(file_content, file.filename, language)
             else:
                 raise ValueError("Неподдерживаемый тип файла")
                 
@@ -59,31 +59,71 @@ class OpenAIService:
                 "description": "Не удалось проанализировать файл"
             }
     
-    async def _analyze_image(self, file_content: bytes, filename: str) -> Dict[str, Any]:
+    async def _analyze_image(self, file_content: bytes, filename: str, language: str) -> Dict[str, Any]:
         """
         Анализирует изображение с помощью GPT-4 Vision
         """
         # Кодируем изображение в base64
         base64_image = base64.b64encode(file_content).decode('utf-8')
         
-        prompt = """
-        Проанализируй это изображение и определи:
-        1. Общее настроение и атмосферу (например: радостная, меланхоличная, энергичная, спокойная)
-        2. Цветовую палитру и её влияние на настроение
-        3. Эмоции, которые передаёт изображение
-        4. Музыкальный жанр или стиль, который подошёл бы к этому настроению
-        5. Придумай короткое красивое описание (caption) для поста в соцсетях, отражающее вайб изображения (1-2 предложения, без хэштегов)
-        
-        Ответь в формате JSON:
-        {
-            "mood": "основное настроение",
-            "emotions": ["список эмоций"],
-            "colors": "описание цветов",
-            "music_genre": "подходящий музыкальный жанр",
-            "description": "краткое описание вайба",
-            "caption": "краткое красивое описание для поста"
-        }
-        """
+        # Создаем промпт в зависимости от языка
+        if language == "en":
+            prompt = """
+            Analyze this image and determine:
+            1. Overall mood and atmosphere (e.g.: joyful, melancholic, energetic, calm)
+            2. Color palette and its influence on mood
+            3. Emotions conveyed by the image
+            4. Music genre or style that would suit this mood
+            5. Create a short beautiful caption for a social media post reflecting the vibe of the image (1-2 sentences, no hashtags)
+            
+            Respond in JSON format:
+            {
+                "mood": "main mood",
+                "emotions": ["list of emotions"],
+                "colors": "color description",
+                "music_genre": "suitable music genre",
+                "description": "brief vibe description",
+                "caption": "short beautiful post caption"
+            }
+            """
+        elif language == "kk":
+            prompt = """
+            Бұл суретті талдап, мынаны анықтаңыз:
+            1. Жалпы көңіл-күй мен атмосфера (мысалы: қуанышты, меланхоликалық, энергиялы, тыныш)
+            2. Түс палитрасы және оның көңіл-күйге әсері
+            3. Суреттің беретін эмоциялары
+            4. Осы көңіл-күйге сәйкес келетін музыка жанры немесе стилі
+            5. Суреттің вибін көрсететін әлеуметтік желі постына арналған қысқа әдемі сипаттама ойлап табыңыз (1-2 сөйлем, хэштегсіз)
+            
+            JSON форматында жауап беріңіз:
+            {
+                "mood": "негізгі көңіл-күй",
+                "emotions": ["эмоциялар тізімі"],
+                "colors": "түстер сипаттамасы",
+                "music_genre": "сәйкес музыка жанры",
+                "description": "қысқа вайб сипаттамасы",
+                "caption": "пост үшін қысқа әдемі сипаттама"
+            }
+            """
+        else:  # ru - default
+            prompt = """
+            Проанализируй это изображение и определи:
+            1. Общее настроение и атмосферу (например: радостная, меланхоличная, энергичная, спокойная)
+            2. Цветовую палитру и её влияние на настроение
+            3. Эмоции, которые передаёт изображение
+            4. Музыкальный жанр или стиль, который подошёл бы к этому настроению
+            5. Придумай короткое красивое описание (caption) для поста в соцсетях, отражающее вайб изображения (1-2 предложения, без хэштегов)
+            
+            Ответь в формате JSON:
+            {
+                "mood": "основное настроение",
+                "emotions": ["список эмоций"],
+                "colors": "описание цветов",
+                "music_genre": "подходящий музыкальный жанр",
+                "description": "краткое описание вайба",
+                "caption": "краткое красивое описание для поста"
+            }
+            """
         
         # Для Azure OpenAI используем модель с поддержкой Vision
         if self.use_azure:
@@ -172,7 +212,7 @@ class OpenAIService:
             "analysis": content
         }
     
-    async def _analyze_video(self, file_content: bytes, filename: str) -> Dict[str, Any]:
+    async def _analyze_video(self, file_content: bytes, filename: str, language: str) -> Dict[str, Any]:
         """
         Анализирует видео (пока используем первый кадр)
         """
@@ -287,24 +327,56 @@ class OpenAIService:
         else:
             return "unknown"
     
-    async def get_music_recommendations(self, mood_analysis: Dict[str, Any], user_preferences: Dict[str, Any], n_tracks: int = 5) -> Dict[str, Any]:
+    async def get_music_recommendations(self, mood_analysis: Dict[str, Any], user_preferences: Dict[str, Any], n_tracks: int = 5, language: str = "ru") -> Dict[str, Any]:
         """
         Генерирует рекомендации музыки на основе анализа настроения и предпочтений пользователя (с учётом его лайкнутых треков)
         """
-        prompt = f"""
-        На основе настроения "{mood_analysis.get('mood', 'neutral')}" и эмоций {mood_analysis.get('emotions', [])} предложи {n_tracks} музыкальных треков.
-        
-        Предпочтения пользователя: {user_preferences.get('top_artists', [])}
-        
-        Ответь в формате JSON:
-        {{
-            "recommended_tracks": [
-                {{"name": "название", "artist": "исполнитель", "reason": "почему подходит"}}
-            ],
-            "explanation": "краткое объяснение",
-            "alternative_genres": ["жанр1", "жанр2"]
-        }}
-        """
+        # Создаем промпт в зависимости от языка
+        if language == "en":
+            prompt = f"""
+            Based on the mood "{mood_analysis.get('mood', 'neutral')}" and emotions {mood_analysis.get('emotions', [])} suggest {n_tracks} music tracks.
+            
+            User preferences: {user_preferences.get('top_artists', [])}
+            
+            Respond in JSON format:
+            {{
+                "recommended_tracks": [
+                    {{"name": "track name", "artist": "artist name", "reason": "why it fits"}}
+                ],
+                "explanation": "brief explanation",
+                "alternative_genres": ["genre1", "genre2"]
+            }}
+            """
+        elif language == "kk":
+            prompt = f"""
+            "{mood_analysis.get('mood', 'neutral')}" көңіл-күйі мен {mood_analysis.get('emotions', [])} эмоцияларына негізделіп {n_tracks} музыкалық трек ұсыныңыз.
+            
+            Пайдаланушы таңдаулылары: {user_preferences.get('top_artists', [])}
+            
+            JSON форматында жауап беріңіз:
+            {{
+                "recommended_tracks": [
+                    {{"name": "трек атауы", "artist": "орындаушы атауы", "reason": "неліктен сәйкес келеді"}}
+                ],
+                "explanation": "қысқаша түсіндірме",
+                "alternative_genres": ["жанр1", "жанр2"]
+            }}
+            """
+        else:  # ru - default
+            prompt = f"""
+            На основе настроения "{mood_analysis.get('mood', 'neutral')}" и эмоций {mood_analysis.get('emotions', [])} предложи {n_tracks} музыкальных треков.
+            
+            Предпочтения пользователя: {user_preferences.get('top_artists', [])}
+            
+            Ответь в формате JSON:
+            {{
+                "recommended_tracks": [
+                    {{"name": "название", "artist": "исполнитель", "reason": "почему подходит"}}
+                ],
+                "explanation": "краткое объяснение",
+                "alternative_genres": ["жанр1", "жанр2"]
+            }}
+            """
         
         # Выбираем модель и клиент в зависимости от провайдера
         if self.use_azure:

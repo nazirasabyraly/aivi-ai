@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 class UserBase(BaseModel):
@@ -13,6 +13,9 @@ class UserLogin(BaseModel):
     email: str
     password: str
 
+class GoogleAuthRequest(BaseModel):
+    token: str  # Google ID token
+
 class EmailVerification(BaseModel):
     email: str
     verification_code: str
@@ -20,11 +23,23 @@ class EmailVerification(BaseModel):
 class ResendVerification(BaseModel):
     email: str
 
+class RecommendationsRequest(BaseModel):
+    mood: Optional[str] = None
+    emotions: Optional[List[str]] = None
+    colors: Optional[str] = None
+    music_genre: Optional[str] = None
+    description: Optional[str] = None
+    caption: Optional[str] = None
+    language: Optional[str] = "ru"
+
 class User(UserBase):
     id: int
     created_at: datetime
     is_active: bool
     is_verified: bool
+    provider: Optional[str] = "email"
+    avatar_url: Optional[str] = None
+    name: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -33,6 +48,11 @@ class Token(BaseModel):
     access_token: str
     token_type: str
     user: User
+
+class VerificationRequired(BaseModel):
+    message: str
+    requires_verification: bool = True
+    email: str
 
 class TokenData(BaseModel):
     username: Optional[str] = None

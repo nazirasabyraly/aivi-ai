@@ -34,7 +34,7 @@ interface BeatsData {
 }
 
 const InteractiveStudio: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [moodAnalysis, setMoodAnalysis] = useState<MoodAnalysis | null>(null);
@@ -57,28 +57,47 @@ const InteractiveStudio: React.FC = () => {
   const [activeRecommendationTab, setActiveRecommendationTab] = useState<'personal' | 'global'>('personal');
 
   // Helper function to get YouTube video ID (simplified search)
-  const getYouTubeVideoId = (trackName: string, artistName: string): string => {
-    // For demo purposes, we'll use a simple hash-based approach
-    // In production, you'd want to use YouTube Data API
-    const query = `${trackName} ${artistName}`.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const hash = query.split('').reduce((a, b) => {
+  // Кеш для YouTube видео
+  const [youtubeCache, setYoutubeCache] = useState<{ [key: string]: string }>({});
+  const [loadingVideos, setLoadingVideos] = useState<{ [key: string]: boolean }>({});
+  
+  const getYouTubeVideoId = async (trackName: string, artistName: string): Promise<string> => {
+    const cacheKey = `${trackName}-${artistName}`;
+    
+    // Проверяем кеш
+    if (youtubeCache[cacheKey]) {
+      return youtubeCache[cacheKey];
+    }
+    
+    try {
+      const query = `${trackName} ${artistName}`;
+      const response = await fetch(`${API_BASE_URL}/recommend/youtube-search?q=${encodeURIComponent(query)}&max_results=1`);
+      const data = await response.json();
+      
+      if (data.results && data.results.length > 0) {
+        const videoId = data.results[0].video_id;
+        setYoutubeCache(prev => ({ ...prev, [cacheKey]: videoId }));
+        return videoId;
+      }
+    } catch (error) {
+      console.error('Error fetching YouTube video:', error);
+    }
+    
+    // Fallback к демо видео если поиск не удался
+    const fallbackVideoIds = [
+      'dQw4w9WgXcQ', // Rick Astley - Never Gonna Give You Up
+      'fJ9rUzIMcZQ', // Queen - Bohemian Rhapsody
+      'kJQP7kiw5Fk', // Despacito
+    ];
+    
+    const hash = (trackName + artistName).split('').reduce((a, b) => {
       a = ((a << 5) - a) + b.charCodeAt(0);
       return a & a;
     }, 0);
     
-    // Sample video IDs for demo
-    const sampleVideoIds = [
-      'dQw4w9WgXcQ', // Rick Astley - Never Gonna Give You Up
-      'fJ9rUzIMcZQ', // Queen - Bohemian Rhapsody
-      'kJQP7kiw5Fk', // Despacito
-      'JGwWNGJdvx8', // Shape of You
-      'CevxZvSJLk8', // Katy Perry - Roar
-      'hT_nvWreIhg', // Counting Stars
-      'lp-EO5I60KA', // Thinking Out Loud
-      'nfWlot6h_JM', // Taylor Swift - Shake It Off
-    ];
-    
-    return sampleVideoIds[Math.abs(hash) % sampleVideoIds.length];
+    const fallbackId = fallbackVideoIds[Math.abs(hash) % fallbackVideoIds.length];
+    setYoutubeCache(prev => ({ ...prev, [cacheKey]: fallbackId }));
+    return fallbackId;
   };
 
   // Clear messages after 5 seconds
@@ -91,6 +110,34 @@ const InteractiveStudio: React.FC = () => {
       return () => clearTimeout(timer);
     }
   }, [error, success]);
+
+  // Предзагрузка YouTube видео при получении рекомендаций
+  useEffect(() => {
+    if (recommendations) {
+      const loadVideos = async () => {
+        const allTracks = [
+          ...(recommendations.personal?.recommended_tracks || []),
+          ...(recommendations.global?.recommended_tracks || [])
+        ];
+
+        for (const track of allTracks) {
+          const cacheKey = `${track.name}-${track.artist}`;
+          if (!youtubeCache[cacheKey] && !loadingVideos[cacheKey]) {
+            setLoadingVideos(prev => ({ ...prev, [cacheKey]: true }));
+            try {
+              await getYouTubeVideoId(track.name, track.artist);
+            } catch (error) {
+              console.error('Error loading video for', track.name, track.artist, error);
+            } finally {
+              setLoadingVideos(prev => ({ ...prev, [cacheKey]: false }));
+            }
+          }
+        }
+      };
+
+      loadVideos();
+    }
+  }, [recommendations]);
 
   const handleFileSelect = (file: File) => {
     setSelectedFile(file);
@@ -136,6 +183,7 @@ const InteractiveStudio: React.FC = () => {
     try {
       const formData = new FormData();
       formData.append('file', selectedFile);
+      formData.append('language', i18n.language);
 
       const response = await fetch(`${API_BASE_URL}/chat/analyze-media`, {
         method: 'POST',
@@ -187,7 +235,10 @@ const InteractiveStudio: React.FC = () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(moodAnalysis),
+        body: JSON.stringify({
+          ...moodAnalysis,
+          language: i18n.language
+        }),
       });
 
       if (response.status === 401) {
@@ -277,14 +328,29 @@ const InteractiveStudio: React.FC = () => {
         });
 
         const data = await response.json();
+        console.log('Generation status response:', data);
 
         if (data.success && data.status) {
           const status = data.status.status;
           
           if (status === 'complete') {
             // Extract audio URL from the nested structure
-            const audioUrl = data.status.local_audio_url || 
-                            data.status.data?.data?.[0]?.stream_audio_url;
+            let audioUrl: string | null = null;
+            
+            // Try local_audio_url first (from backend processing)
+            if (data.status.local_audio_url) {
+              audioUrl = `${API_BASE_URL}${data.status.local_audio_url}`;
+            }
+            // Try stream_audio_url from the nested data structure
+            else if (data.status.data?.data?.[0]?.stream_audio_url) {
+              audioUrl = data.status.data.data[0].stream_audio_url;
+            }
+            // Try direct stream_audio_url
+            else if (data.status.stream_audio_url) {
+              audioUrl = data.status.stream_audio_url;
+            }
+            
+            console.log('Extracted audio URL:', audioUrl);
             
             if (audioUrl) {
               setBeatsData(prev => ({
@@ -295,11 +361,16 @@ const InteractiveStudio: React.FC = () => {
               setSuccess(t('studio_beat_ready'));
               setActiveSection('beats');
               return;
+            } else {
+              console.error('No audio URL found in response:', data.status);
+              setError('Audio URL not found in response');
+              setBeatsData(prev => ({ ...prev, generatingBeat: false }));
+              return;
             }
-                     } else if (status === 'failed') {
-             setError(t('studio_beat_failed'));
-             setBeatsData(prev => ({ ...prev, generatingBeat: false }));
-             return;
+          } else if (status === 'failed') {
+            setError(t('studio_beat_failed'));
+            setBeatsData(prev => ({ ...prev, generatingBeat: false }));
+            return;
           } else if (status === 'pending') {
             // Continue polling
           }
@@ -313,6 +384,7 @@ const InteractiveStudio: React.FC = () => {
           setBeatsData(prev => ({ ...prev, generatingBeat: false }));
         }
       } catch (error) {
+        console.error('Error polling generation status:', error);
         setError(t('studio_beat_status_error'));
         setBeatsData(prev => ({ ...prev, generatingBeat: false }));
       }
@@ -546,36 +618,68 @@ const InteractiveStudio: React.FC = () => {
             </div>
             
             <div className="recommendations-grid">
-              {recommendations[activeRecommendationTab].recommended_tracks.map((rec, index) => (
-                <div key={index} className="recommendation-card">
-                  <div className="rec-header">
-                    <h4>{rec.name}</h4>
-                    <p>{rec.artist}</p>
+              {recommendations[activeRecommendationTab].recommended_tracks.map((rec, index) => {
+                const cacheKey = `${rec.name}-${rec.artist}`;
+                const videoId = youtubeCache[cacheKey];
+                const isLoadingVideo = loadingVideos[cacheKey];
+                
+                return (
+                  <div key={index} className="recommendation-card">
+                    <div className="rec-header">
+                      <h4>{rec.name}</h4>
+                      <p>{rec.artist}</p>
+                    </div>
+                    <p className="rec-reason">{rec.reason}</p>
+                    
+                    {/* YouTube Video */}
+                    <div className="youtube-container">
+                      {isLoadingVideo ? (
+                        <div style={{ 
+                          width: '100%', 
+                          height: '200px', 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'center',
+                          backgroundColor: '#f0f0f0',
+                          borderRadius: '8px'
+                        }}>
+                          <div>🔍 Поиск видео...</div>
+                        </div>
+                      ) : videoId ? (
+                        <iframe
+                          width="100%"
+                          height="200"
+                          src={`https://www.youtube.com/embed/${videoId}`}
+                          frameBorder="0"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                          title={`${rec.name} - ${rec.artist}`}
+                        ></iframe>
+                      ) : (
+                        <div style={{ 
+                          width: '100%', 
+                          height: '200px', 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'center',
+                          backgroundColor: '#f0f0f0',
+                          borderRadius: '8px'
+                        }}>
+                          <div>❌ Видео не найдено</div>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <button 
+                      onClick={() => handleLike(rec.name, rec.artist)}
+                      disabled={liked[`${rec.name}-${rec.artist}`]}
+                      className={`btn btn-like ${liked[`${rec.name}-${rec.artist}`] ? 'liked' : ''}`}
+                    >
+                      {liked[`${rec.name}-${rec.artist}`] ? `❤️ ${t('studio_liked')}` : `🤍 ${t('studio_like')}`}
+                    </button>
                   </div>
-                  <p className="rec-reason">{rec.reason}</p>
-                  
-                  {/* YouTube Video */}
-                  <div className="youtube-container">
-                    <iframe
-                      width="100%"
-                      height="200"
-                      src={`https://www.youtube.com/embed/${getYouTubeVideoId(rec.name, rec.artist)}`}
-                      frameBorder="0"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                      title={`${rec.name} - ${rec.artist}`}
-                    ></iframe>
-                  </div>
-                  
-                  <button 
-                    onClick={() => handleLike(rec.name, rec.artist)}
-                    disabled={liked[`${rec.name}-${rec.artist}`]}
-                    className={`btn btn-like ${liked[`${rec.name}-${rec.artist}`] ? 'liked' : ''}`}
-                  >
-                    {liked[`${rec.name}-${rec.artist}`] ? `❤️ ${t('studio_liked')}` : `🤍 ${t('studio_like')}`}
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>

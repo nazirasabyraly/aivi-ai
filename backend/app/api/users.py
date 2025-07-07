@@ -1,18 +1,26 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+import os
 from ..database import get_db
 from ..models.user import User
-from ..schemas import UserCreate, UserLogin, Token, User as UserSchema
+from ..schemas import (UserCreate, UserLogin, Token, User as UserSchema, 
+                      EmailVerification, ResendVerification, VerificationRequired,
+                      GoogleAuthRequest)
 from ..services.auth_service import AuthService
 
 router = APIRouter(tags=["users"])
 security = HTTPBearer()
 auth_service = AuthService()
 
+# Google OAuth configuration
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+
 @router.post("/register", response_model=Token)
 async def register(user_data: UserCreate, db: Session = Depends(get_db)):
-    """Регистрация нового пользователя"""
+    """Регистрация нового пользователя с email verification"""
     # Проверяем, существует ли пользователь с таким email
     if auth_service.get_user_by_email(db, user_data.email):
         raise HTTPException(
@@ -27,10 +35,39 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
             detail="Пользователь с таким именем уже существует"
         )
     
-    # Создаем нового пользователя
-    user = auth_service.create_user(db, user_data.email, user_data.username, user_data.password)
+    # Создаем нового пользователя с verification
+    user, verification_code = auth_service.create_user_with_verification(
+        db, user_data.email, user_data.username, user_data.password
+    )
     
-    # Создаем токен доступа
+    # Возвращаем информацию о необходимости верификации
+    raise HTTPException(
+        status_code=status.HTTP_201_CREATED,
+        detail={
+            "message": "Пользователь создан. Проверьте email для подтверждения аккаунта.",
+            "requires_verification": True,
+            "email": user.email
+        }
+    )
+
+@router.post("/verify-email", response_model=Token)
+async def verify_email(verification_data: EmailVerification, db: Session = Depends(get_db)):
+    """Подтверждение email адреса"""
+    if not auth_service.verify_email_code(db, verification_data.email, verification_data.verification_code):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Неверный или истекший код подтверждения"
+        )
+    
+    # Get verified user
+    user = auth_service.get_user_by_email(db, verification_data.email)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Пользователь не найден"
+        )
+    
+    # Create access token
     access_token = auth_service.create_access_token(data={"sub": user.username})
     
     return Token(
@@ -38,6 +75,72 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
         token_type="bearer",
         user=UserSchema.from_orm(user)
     )
+
+@router.post("/resend-verification")
+async def resend_verification_code(resend_data: ResendVerification, db: Session = Depends(get_db)):
+    """Повторная отправка кода подтверждения"""
+    if not auth_service.resend_verification_code(db, resend_data.email):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Пользователь не найден или уже подтвержден"
+        )
+    
+    return {"message": "Код подтверждения отправлен повторно"}
+
+@router.post("/google-auth", response_model=Token)
+async def google_auth(auth_data: GoogleAuthRequest, db: Session = Depends(get_db)):
+    """Авторизация через Google OAuth"""
+    try:
+        # Verify Google ID token
+        if not GOOGLE_CLIENT_ID:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Google OAuth не настроен"
+            )
+        
+        # Verify the token
+        idinfo = id_token.verify_oauth2_token(
+            auth_data.token, 
+            google_requests.Request(), 
+            GOOGLE_CLIENT_ID
+        )
+        
+        # Get user info from Google
+        google_id = idinfo['sub']
+        email = idinfo['email']
+        name = idinfo.get('name', '')
+        avatar_url = idinfo.get('picture', '')
+        
+        # Create or update user
+        user = auth_service.create_or_update_google_user(
+            db=db,
+            google_id=google_id,
+            email=email,
+            name=name,
+            avatar_url=avatar_url
+        )
+        
+        # Create access token
+        access_token = auth_service.create_access_token(data={"sub": user.username})
+        
+        return Token(
+            access_token=access_token,
+            token_type="bearer",
+            user=UserSchema.from_orm(user)
+        )
+        
+    except ValueError as e:
+        # Invalid token
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверный Google токен"
+        )
+    except Exception as e:
+        print(f"Google OAuth error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ошибка авторизации через Google"
+        )
 
 @router.post("/login", response_model=Token)
 async def login(user_data: UserLogin, db: Session = Depends(get_db)):
@@ -48,6 +151,17 @@ async def login(user_data: UserLogin, db: Session = Depends(get_db)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Неверный email или пароль",
             headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Check if user is verified
+    if not user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "message": "Email не подтвержден. Проверьте почту или запросите новый код.",
+                "requires_verification": True,
+                "email": user.email
+            }
         )
     
     # Создаем токен доступа

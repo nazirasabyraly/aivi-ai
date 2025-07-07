@@ -1,19 +1,30 @@
-fastapi
-uvicorn[standard]
-httpx
-python-dotenv
-python-multipart
-openai
-pydantic[email]
+fastapi==0.104.1
+uvicorn==0.24.0
+httpx==0.27.0
+python-dotenv==1.0.0
+python-multipart==0.0.6
+openai==1.3.7
+pydantic==2.4.2
 email-validator
-sqlalchemy
-passlib[bcrypt]
-python-jose[cryptography]
-python-multipart
-psycopg2-binary
-requests
-alembic
-yt-dlp
-ffmpeg-python
+sqlalchemy==2.0.23
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
+bcrypt==4.0.1
+azure-identity==1.15.0
+azure-keyvault-secrets==4.7.0
+python-decouple==3.8
+requests==2.31.0
+yt-dlp==2023.11.16
+pydub==0.25.1
+ffmpeg-python==0.2.0
+psycopg2-binary==2.9.9
+alembic==1.12.1
+
+# Google OAuth dependencies
+google-auth==2.26.2
+google-auth-oauthlib==1.2.0
+google-auth-httplib2==0.2.0
 
 # Для генерации музыки через suno.ai требуется Node.js и puppeteer (npm install puppeteer)
+
+sib-api-v3-sdk==7.6.0
