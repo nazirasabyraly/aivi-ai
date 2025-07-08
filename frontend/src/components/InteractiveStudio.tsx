@@ -55,12 +55,53 @@ const InteractiveStudio: React.FC = () => {
   const recommendationsRef = useRef<HTMLDivElement>(null);
   const [dragActive, setDragActive] = useState(false);
   const [activeRecommendationTab, setActiveRecommendationTab] = useState<'personal' | 'global'>('personal');
+  const [showLimitModal, setShowLimitModal] = useState(false);
+  const [userProfile, setUserProfile] = useState<any>(null);
 
   // Helper function to get YouTube video ID (simplified search)
   // Кеш для YouTube видео
   const [youtubeCache, setYoutubeCache] = useState<{ [key: string]: string }>({});
   const [loadingVideos, setLoadingVideos] = useState<{ [key: string]: boolean }>({});
   
+  // Функция проверки лимита пользователя
+  const checkUserLimit = async (): Promise<boolean> => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) {
+      setError('⚠️ Для анализа медиафайлов необходима авторизация. Нажмите "Выйти" в левом верхнем углу и войдите в систему.');
+      return false; // Блокируем неавторизованных пользователей
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/users/me`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        const profile = await response.json();
+        setUserProfile(profile);
+        
+        // Если PRO пользователь - безлимитный доступ
+        if (profile.account_type === 'pro') {
+          return true;
+        }
+        
+        // Если обычный пользователь - проверяем лимит
+        if (profile.remaining_analyses > 0) {
+          return true;
+        } else {
+          setShowLimitModal(true);
+          return false;
+        }
+      }
+    } catch (error) {
+      console.error('Error checking user limit:', error);
+    }
+    
+    return true; // В случае ошибки разрешаем
+  };
+
   const getYouTubeVideoId = async (trackName: string, artistName: string): Promise<string> => {
     const cacheKey = `${trackName}-${artistName}`;
     
@@ -176,6 +217,12 @@ const InteractiveStudio: React.FC = () => {
   const analyzeMedia = async () => {
     if (!selectedFile) return;
 
+    // Проверяем лимит пользователя
+    const canAnalyze = await checkUserLimit();
+    if (!canAnalyze) {
+      return; // Лимит исчерпан, показано модальное окно
+    }
+
     setAnalyzing(true);
     setError(null);
     setActiveSection('analysis');
@@ -185,8 +232,12 @@ const InteractiveStudio: React.FC = () => {
       formData.append('file', selectedFile);
       formData.append('language', i18n.language);
 
+      const token = localStorage.getItem('auth_token');
       const response = await fetch(`${API_BASE_URL}/chat/analyze-media`, {
         method: 'POST',
+        headers: {
+          ...(token && { 'Authorization': `Bearer ${token}` })
+        },
         body: formData,
       });
 
@@ -196,6 +247,9 @@ const InteractiveStudio: React.FC = () => {
         setMoodAnalysis(data);
         setSuccess(t('studio_analysis_success'));
         setActiveSection('analysis');
+        
+        // Обновляем информацию о пользователе после успешного анализа
+        await checkUserLimit();
         
         // Auto-scroll to analysis results
         setTimeout(() => {
@@ -434,6 +488,16 @@ const InteractiveStudio: React.FC = () => {
     setSuccess(null);
     setActiveSection('upload');
     setLiked({});
+  };
+
+  const handleUpgrade = () => {
+    // TODO: Реализовать логику перехода на PRO
+    alert('Функция перехода на PRO будет реализована позже');
+    setShowLimitModal(false);
+  };
+
+  const handleCloseLimitModal = () => {
+    setShowLimitModal(false);
   };
 
   return (
@@ -711,6 +775,51 @@ const InteractiveStudio: React.FC = () => {
                 />
               </div>
             ) : null}
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно лимита */}
+      {showLimitModal && (
+        <div className="modal-overlay" onClick={handleCloseLimitModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>⚠️ {t('limit_exceeded_title') || 'Лимит исчерпан'}</h2>
+              <button className="modal-close" onClick={handleCloseLimitModal}>
+                ×
+              </button>
+            </div>
+            <div className="modal-body">
+              <p>
+                {t('limit_exceeded_message') || 
+                'У вас исчерпан лимит анализов на сегодня (3/3). Вы можете:'
+                }
+              </p>
+              <ul>
+                <li>{t('wait_tomorrow') || 'Подождать до завтра (лимит обновится в 00:00)'}</li>
+                <li>{t('upgrade_for_unlimited') || 'Перейти на PRO для безлимитных анализов'}</li>
+              </ul>
+              {userProfile && (
+                <div className="usage-info-modal">
+                  <p><strong>{t('current_usage') || 'Текущее использование'}:</strong> {userProfile.daily_usage}/3</p>
+                  <p><strong>{t('account_type') || 'Тип аккаунта'}:</strong> {userProfile.account_type}</p>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button 
+                className="btn-upgrade-modal"
+                onClick={handleUpgrade}
+              >
+                ⭐ {t('upgrade_to_pro') || 'UPGRADE TO PRO'}
+              </button>
+              <button 
+                className="btn-cancel-modal"
+                onClick={handleCloseLimitModal}
+              >
+                {t('wait_tomorrow') || 'Подождать до завтра'}
+              </button>
+            </div>
           </div>
         </div>
       )}

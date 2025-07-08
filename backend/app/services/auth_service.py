@@ -1,9 +1,10 @@
 import bcrypt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
+from fastapi import HTTPException
 from ..models.user import User
 from ..database import get_db
 from ..config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
@@ -208,4 +209,36 @@ class AuthService:
             provider="google"
         )
         
-        return user 
+        return user
+    
+    def check_usage_limit(self, db: Session, user: User) -> bool:
+        """Проверяет и обновляет лимит использования для пользователя"""
+        # PRO пользователи имеют безлимитный доступ
+        if user.account_type == "pro":
+            return True
+        
+        # Проверяем, изменилась ли дата (новый день)
+        today = date.today()
+        if not user.last_usage_date or user.last_usage_date.date() != today:
+            # Сброс счетчика для нового дня
+            user.daily_usage = 0
+            user.last_usage_date = datetime.utcnow()
+        
+        # Проверяем лимит
+        if user.daily_usage >= 3:
+            raise HTTPException(
+                status_code=429, 
+                detail={
+                    "message": "Достигнут дневной лимит анализов (3/день). Перейдите на PRO-аккаунт для безлимитного доступа.",
+                    "daily_usage": user.daily_usage,
+                    "limit": 3,
+                    "account_type": user.account_type
+                }
+            )
+        
+        # Увеличиваем счетчик использования
+        user.daily_usage += 1
+        db.commit()
+        db.refresh(user)
+        
+        return True 

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 import logging
 import os
 
-from app.config import FRONTEND_URL
+from app.config import FRONTEND_URL, BACKEND_BASE_URL   
 from ..database import get_db
 from ..models.user import User
 from app.services.auth_service import AuthService
@@ -55,15 +55,15 @@ async def oauth_debug(request: Request):
         "google_client_id": GOOGLE_CLIENT_ID[:20] + "..." if GOOGLE_CLIENT_ID else "NOT_SET",
         "google_client_secret": "SET" if GOOGLE_CLIENT_SECRET else "NOT_SET",
         "frontend_url": FRONTEND_URL,
-        "redirect_uri": f"{request.base_url}auth/google/callback",
+        "redirect_uri": f"{BACKEND_BASE_URL}auth/google/callback",
         "base_url": str(request.base_url),
         "session_secret": "SET" if os.getenv("SESSION_SECRET_KEY") else "NOT_SET"
     }
 
 @router.get("/google")
 async def login_via_google(request: Request):
-    # Правильно строим redirect URI
-    redirect_uri = f"{request.base_url}auth/google/callback"
+    # Используем правильный redirect URI
+    redirect_uri = f"{BACKEND_BASE_URL}/auth/google/callback"
     logger.info(f"🔗 OAuth redirect URI: {redirect_uri}")
     
     try:
@@ -131,7 +131,7 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
             "client_secret": GOOGLE_CLIENT_SECRET,
             "code": request.query_params["code"],
             "grant_type": "authorization_code",
-            "redirect_uri": f"{request.base_url}auth/google/callback"
+            "redirect_uri": f"{BACKEND_BASE_URL}/auth/google/callback"
         }
         
         async with httpx.AsyncClient() as client:

@@ -25,12 +25,19 @@ os.makedirs(AUDIO_CACHE_DIR, exist_ok=True)
 async def analyze_media(
     file: UploadFile = File(...),
     user_id: str = Form(None),
-    language: str = Form("ru")  # Получаем язык из FormData
+    language: str = Form("ru"),  # Получаем язык из FormData
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """
     Анализирует загруженный медиафайл и возвращает анализ настроения
     """
     try:
+        # Проверяем лимиты использования
+        from ..services.auth_service import AuthService
+        auth_service = AuthService()
+        auth_service.check_usage_limit(db, current_user)
+        
         print(f"🔍 Получен файл: {file.filename}, размер: {file.size}, тип: {file.content_type}, язык: {language}")
         
         # Проверяем размер файла

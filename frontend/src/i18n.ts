@@ -117,6 +117,30 @@ const resources = {
       'dashboard_search': 'Поиск',
       'dashboard_favorites': 'Избранное',
       
+      // Profile
+      'basic_account': 'Обычный',
+      'unlimited': 'Безлимитно',
+      'retry': 'Попробовать снова',
+      'profile_not_found': 'Профиль не найден',
+      'back_to_dashboard': 'Назад к дашборду',
+      'account_type': 'Тип аккаунта',
+      'daily_analyses': 'Анализы сегодня',
+      'registration_method': 'Способ регистрации',
+      'google_oauth': 'Google OAuth',
+      'email_registration': 'Email регистрация',
+      'registration_date': 'Дата регистрации',
+      'upgrade_to_pro': 'Перейти на PRO',
+      'pro_benefits': 'Безлимитные анализы, приоритетная поддержка и дополнительные функции',
+      'upgrade_now': 'Перейти на PRO',
+      'enter_name': 'Введите имя',
+      
+      // Limit modal
+      'limit_exceeded_title': 'Лимит исчерпан',
+      'limit_exceeded_message': 'У вас исчерпан лимит анализов на сегодня (3/3). Вы можете:',
+      'wait_tomorrow': 'Подождать до завтра (лимит обновится в 00:00)',
+      'upgrade_for_unlimited': 'Перейти на PRO для безлимитных анализов',
+      'current_usage': 'Текущее использование',
+      
       // Landing page
       'landing_hero_title': 'Ваш AI музыкальный помощник',
       'landing_hero_description': 'Загрузите фото или видео, и наш ИИ создаст персональную музыкальную подборку, соответствующую вашему настроению и атмосфере момента',
@@ -264,6 +288,30 @@ const resources = {
       'dashboard_search': 'Search',
       'dashboard_favorites': 'Favorites',
       
+      // Profile
+      'basic_account': 'Basic',
+      'unlimited': 'Unlimited',
+      'retry': 'Try again',
+      'profile_not_found': 'Profile not found',
+      'back_to_dashboard': 'Back to dashboard',
+      'account_type': 'Account type',
+      'daily_analyses': 'Today\'s analyses',
+      'registration_method': 'Registration method',
+      'google_oauth': 'Google OAuth',
+      'email_registration': 'Email registration',
+      'registration_date': 'Registration date',
+      'upgrade_to_pro': 'Upgrade to PRO',
+      'pro_benefits': 'Unlimited analyses, priority support and additional features',
+      'upgrade_now': 'Upgrade now',
+      'enter_name': 'Enter name',
+      
+      // Limit modal
+      'limit_exceeded_title': 'Limit Exceeded',
+      'limit_exceeded_message': 'You have exceeded your daily analysis limit (3/3). You can:',
+      'wait_tomorrow': 'Wait until tomorrow (limit resets at 00:00)',
+      'upgrade_for_unlimited': 'Upgrade to PRO for unlimited analyses',
+      'current_usage': 'Current usage',
+      
       // Landing page
       'landing_hero_title': 'Your AI Music Assistant',
       'landing_hero_description': 'Upload a photo or video, and our AI will create a personalized music playlist that matches your mood and the atmosphere of the moment',
@@ -410,6 +458,30 @@ const resources = {
       'dashboard_studio': 'Студия',
       'dashboard_search': 'Іздеу',
       'dashboard_favorites': 'Таңдаулылар',
+      
+      // Profile
+      'basic_account': 'Қарапайым',
+      'unlimited': 'Шексіз',
+      'retry': 'Қайталап көру',
+      'profile_not_found': 'Профиль табылмады',
+      'back_to_dashboard': 'Дашбордқа қайту',
+      'account_type': 'Аккаунт түрі',
+      'daily_analyses': 'Бүгінгі талдаулар',
+      'registration_method': 'Тіркелу тәсілі',
+      'google_oauth': 'Google OAuth',
+      'email_registration': 'Email тіркелуі',
+      'registration_date': 'Тіркелу күні',
+      'upgrade_to_pro': 'PRO-ға өту',
+      'pro_benefits': 'Шексіз талдаулар, басымды қолдау және қосымша мүмкіндіктер',
+      'upgrade_now': 'Қазір PRO-ға өту',
+      'enter_name': 'Атыңызды енгізіңіз',
+      
+      // Limit modal
+      'limit_exceeded_title': 'Лимит таусылды',
+      'limit_exceeded_message': 'Сіздің бүгінгі талдау лимитіңіз таусылды (3/3). Сіз мыналарды жасай аласыз:',
+      'wait_tomorrow': 'Ертеңге дейін күту (лимит 00:00-де жаңарады)',
+      'upgrade_for_unlimited': 'Шексіз талдау үшін PRO-ға өту',
+      'current_usage': 'Ағымдағы пайдалану',
       
       // Landing page
       'landing_hero_title': 'Сіздің AI музыка көмекшісі',

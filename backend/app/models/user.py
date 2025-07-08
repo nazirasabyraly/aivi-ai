@@ -28,6 +28,11 @@ class User(Base):
     # Optional user profile fields
     name = Column(String, nullable=True)
     preferences = Column(String, nullable=True)  # JSON string for music preferences
+    
+    # Account limits and usage tracking
+    account_type = Column(String, default="basic")  # "basic" or "pro"
+    daily_usage = Column(Integer, default=0)
+    last_usage_date = Column(DateTime, nullable=True)
 
 class SavedSong(Base):
     __tablename__ = "saved_songs"

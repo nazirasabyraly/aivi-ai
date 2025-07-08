@@ -8,7 +8,7 @@ from ..database import get_db
 from ..models.user import User
 from ..schemas import (UserCreate, UserLogin, Token, User as UserSchema, 
                       EmailVerification, ResendVerification, VerificationRequired,
-                      GoogleAuthRequest)
+                      GoogleAuthRequest, UserProfileUpdate)
 from ..services.auth_service import AuthService
 
 router = APIRouter(tags=["users"])
@@ -173,12 +173,12 @@ async def login(user_data: UserLogin, db: Session = Depends(get_db)):
         user=UserSchema.from_orm(user)
     )
 
-@router.get("/me", response_model=UserSchema)
+@router.get("/me")
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ):
-    """Получение информации о текущем пользователе"""
+    """Получение информации о текущем пользователе с данными профиля"""
     username = auth_service.verify_token(credentials.credentials)
     if username is None:
         raise HTTPException(
@@ -195,7 +195,97 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    return UserSchema.from_orm(user)
+    # Подсчитываем оставшиеся анализы
+    remaining_analyses = 0
+    if user.account_type == "pro":
+        remaining_analyses = -1  # Безлимитный
+    else:
+        from datetime import date
+        today = date.today()
+        if not user.last_usage_date or user.last_usage_date.date() != today:
+            remaining_analyses = 3  # Новый день - полный лимит
+        else:
+            remaining_analyses = max(0, 3 - user.daily_usage)
+    
+    return {
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "name": user.name,
+        "avatar_url": user.avatar_url,
+        "account_type": user.account_type,
+        "daily_usage": user.daily_usage,
+        "remaining_analyses": remaining_analyses,
+        "is_verified": user.is_verified,
+        "provider": user.provider,
+        "created_at": user.created_at
+    }
+
+@router.put("/update-profile")
+async def update_profile(
+    profile_data: UserProfileUpdate,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
+    """Обновление профиля пользователя"""
+    username = auth_service.verify_token(credentials.credentials)
+    if username is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Недействительный токен",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    user = auth_service.get_user_by_username(db, username)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Пользователь не найден",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Обновляем данные пользователя
+    if profile_data.name is not None:
+        user.name = profile_data.name.strip()
+    
+    if profile_data.username is not None:
+        # Проверяем, что новый username уникален
+        existing_user = auth_service.get_user_by_username(db, profile_data.username.strip())
+        if existing_user and existing_user.id != user.id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Пользователь с таким именем уже существует"
+            )
+        user.username = profile_data.username.strip()
+    
+    db.commit()
+    db.refresh(user)
+    
+    # Подсчитываем оставшиеся анализы
+    remaining_analyses = 0
+    if user.account_type == "pro":
+        remaining_analyses = -1  # Безлимитный
+    else:
+        from datetime import date
+        today = date.today()
+        if not user.last_usage_date or user.last_usage_date.date() != today:
+            remaining_analyses = 3  # Новый день - полный лимит
+        else:
+            remaining_analyses = max(0, 3 - user.daily_usage)
+    
+    return {
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "name": user.name,
+        "avatar_url": user.avatar_url,
+        "account_type": user.account_type,
+        "daily_usage": user.daily_usage,
+        "remaining_analyses": remaining_analyses,
+        "is_verified": user.is_verified,
+        "provider": user.provider,
+        "created_at": user.created_at
+    }
 
 def get_current_user_dependency(
     credentials: HTTPAuthorizationCredentials = Depends(security),

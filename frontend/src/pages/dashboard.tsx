@@ -5,6 +5,7 @@ import InteractiveStudio from '../components/InteractiveStudio'
 import { useTranslation } from 'react-i18next'
 import Recommendations from '../components/Recommendations'
 import Favorites from '../components/Favorites'
+import Profile from './profile'
 
 const Dashboard = () => {
   const navigate = useNavigate()
@@ -12,7 +13,7 @@ const Dashboard = () => {
   const [userProfile, setUserProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'studio' | 'recommendations' | 'favorites'>('studio')
+  const [activeTab, setActiveTab] = useState<'studio' | 'recommendations' | 'favorites' | 'profile'>('studio')
 
   useEffect(() => {
     // Проверяем только email/пароль авторизацию
@@ -129,6 +130,23 @@ const Dashboard = () => {
           >
             ❤️ {t('dashboard_favorites')}
           </button>
+          <button
+            onClick={() => setActiveTab('profile')}
+            style={{
+              padding: '12px 24px',
+              background: activeTab === 'profile' ? 'rgba(255, 255, 255, 0.9)' : 'transparent',
+              color: activeTab === 'profile' ? '#333' : 'white',
+              border: 'none',
+              borderRadius: '12px',
+              cursor: 'pointer',
+              fontSize: '16px',
+              fontWeight: '600',
+              transition: 'all 0.3s ease',
+              minWidth: '140px'
+            }}
+          >
+            👤 {t('profile') || 'Профиль'}
+          </button>
         </div>
       </div>
       
@@ -158,6 +176,7 @@ const Dashboard = () => {
             </div>
           </div>
         )}
+        {activeTab === 'profile' && <Profile />}
       </div>
     </div>
   )

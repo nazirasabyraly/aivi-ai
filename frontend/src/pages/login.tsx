@@ -29,6 +29,7 @@ const Login = () => {
   const handleGoogleAuth = () => {
     // Перенаправляем на backend endpoint для Google OAuth
     window.location.href = `${API_BASE_URL}/auth/google`;
+    console.log(`${API_BASE_URL}/auth/google`)
   };
 
   // Проверяем токен из URL при загрузке компонента (для OAuth callback)

@@ -44,6 +44,10 @@ class User(UserBase):
     class Config:
         from_attributes = True
 
+class UserProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    username: Optional[str] = None
+
 class Token(BaseModel):
     access_token: str
     token_type: str
