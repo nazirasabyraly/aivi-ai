@@ -24,6 +24,7 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8001"))
 
+
 # JWT settings
 SECRET_KEY = os.getenv("SECRET_KEY", secrets.token_urlsafe(32))
 ALGORITHM = "HS256"
