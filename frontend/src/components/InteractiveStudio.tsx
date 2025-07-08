@@ -31,6 +31,8 @@ interface BeatsData {
   generatedBeatUrl?: string;
   generatingBeat: boolean;
   beatRequestId?: string;
+  generationMessage?: string;
+  generationProgress?: number;
 }
 
 const InteractiveStudio: React.FC = () => {
@@ -325,10 +327,60 @@ const InteractiveStudio: React.FC = () => {
     }
   };
 
+  // Массив сообщений для прогресса генерации
+  const generationMessages = [
+    "🎵 Начинается работа над песней...",
+    "🎼 Анализируем ваше настроение...",
+    "🎹 Создаем мелодию...",
+    "🥁 Добавляем ритм...",
+    "🎸 Настраиваем инструменты...",
+    "🎤 Микшируем звук...",
+    "⏰ Осталось совсем немного...",
+    "🎉 Финальная обработка..."
+  ];
+
+  // Функция для плавного обновления прогресса
+  const startProgressUpdates = () => {
+    let messageIndex = 0;
+    let progress = 0;
+    
+    const interval = setInterval(() => {
+      if (!beatsData.generatingBeat) {
+        clearInterval(interval);
+        return;
+      }
+      
+      // Обновляем сообщение каждые 8 секунд
+      if (progress % 8 === 0 && messageIndex < generationMessages.length - 1) {
+        messageIndex++;
+        setBeatsData(prev => ({
+          ...prev,
+          generationMessage: generationMessages[messageIndex]
+        }));
+      }
+      
+      // Увеличиваем прогресс на 1% каждую секунду, максимум до 90%
+      if (progress < 90) {
+        progress += 1;
+        setBeatsData(prev => ({
+          ...prev,
+          generationProgress: progress
+        }));
+      }
+      
+      progress++;
+    }, 1000); // Обновляем каждую секунду
+  };
+
   const generateBeat = async () => {
     if (!moodAnalysis) return;
 
-    setBeatsData(prev => ({ ...prev, generatingBeat: true }));
+    setBeatsData(prev => ({ 
+      ...prev, 
+      generatingBeat: true,
+      generationMessage: generationMessages[0],
+      generationProgress: 0
+    }));
     setError(null);
     setActiveSection('beats');
 
@@ -355,6 +407,9 @@ const InteractiveStudio: React.FC = () => {
           generatingBeat: true 
         }));
         
+        // Запускаем обновление сообщений независимо от polling
+        startProgressUpdates();
+        
         // Poll for completion
         pollGenerationStatus(data.request_id);
       } else {
@@ -371,8 +426,22 @@ const InteractiveStudio: React.FC = () => {
     const maxAttempts = 60; // 5 minutes max
     let attempts = 0;
 
+    // Функция для обновления прогресса (теперь только для финального этапа)
+    const updateProgress = (attemptNumber: number) => {
+      // Только обновляем до 95% если прогресс еще не достиг этого значения
+      const progress = Math.min((attemptNumber / maxAttempts) * 100, 95);
+      
+      setBeatsData(prev => ({
+        ...prev,
+        generationProgress: Math.max(prev.generationProgress || 0, progress)
+      }));
+    };
+
     const poll = async () => {
       try {
+        // Обновляем прогресс перед каждым запросом
+        updateProgress(attempts);
+        
         const response = await fetch(`${API_BASE_URL}/chat/generate-beat/status`, {
           method: 'POST',
           headers: {
@@ -411,6 +480,8 @@ const InteractiveStudio: React.FC = () => {
                 ...prev,
                 generatedBeatUrl: audioUrl,
                 generatingBeat: false,
+                generationMessage: "✅ Песня готова!",
+                generationProgress: 100
               }));
               setSuccess(t('studio_beat_ready'));
               setActiveSection('beats');
@@ -471,6 +542,10 @@ const InteractiveStudio: React.FC = () => {
       if (response.ok) {
         setLiked(prev => ({ ...prev, [`${track}-${artist}`]: true }));
         setSuccess('Added to favorites!');
+      } else if (response.status === 409) {
+        // Песня уже сохранена
+        setLiked(prev => ({ ...prev, [`${track}-${artist}`]: true }));
+        setError('Эта песня уже сохранена в избранном');
       } else {
         setError('Failed to add to favorites');
       }
@@ -761,7 +836,16 @@ const InteractiveStudio: React.FC = () => {
             {beatsData.generatingBeat ? (
               <div className="generating-beat">
                 <div className="beat-spinner"></div>
-                <h3>{t('studio_beat_generating')}</h3>
+                <h3>{beatsData.generationMessage || t('studio_beat_generating')}</h3>
+                <div className="generation-progress">
+                  <div className="progress-bar">
+                    <div 
+                      className="progress-fill" 
+                      style={{ width: `${beatsData.generationProgress || 0}%` }}
+                    ></div>
+                  </div>
+                  <span className="progress-text">{Math.round(beatsData.generationProgress || 0)}%</span>
+                </div>
                 <p>{t('studio_beat_wait')}</p>
               </div>
             ) : beatsData.generatedBeatUrl ? (

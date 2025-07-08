@@ -70,6 +70,10 @@ const Recommendations: React.FC = () => {
       if (resp.ok) {
         setLiked(prev => ({ ...prev, [video.video_id]: true }));
         setSuccess(t('recommendations_success_like'));
+      } else if (resp.status === 409) {
+        // Песня уже сохранена
+        setLiked(prev => ({ ...prev, [video.video_id]: true }));
+        setError('Эта песня уже сохранена в избранном');
       } else {
         setError(t('recommendations_error'));
       }
