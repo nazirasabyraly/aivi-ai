@@ -188,7 +188,7 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  // Loading state
+  // Loading state with better progress indication
   if (loading) {
     return (
       <div style={{ 
@@ -212,7 +212,11 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({
           borderRadius: '50%',
           animation: 'spin 1s linear infinite'
         }} />
-        <span style={{ fontSize: '14px' }}>Loading audio...</span>
+        <div style={{ textAlign: 'left' }}>
+          <div style={{ fontSize: '14px', fontWeight: '600', marginBottom: '4px' }}>
+            🎵 Загрузка аудио...
+          </div>
+        </div>
       </div>
     );
   }

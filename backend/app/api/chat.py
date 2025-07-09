@@ -213,7 +213,12 @@ async def generate_beat(request: GenerateBeatRequest):
         # --- Riffusion API параметры ---
         RIFFUSION_API_KEY = os.getenv("RIFFUSION_API_KEY")
         if not RIFFUSION_API_KEY:
-            return GenerateBeatResponse(success=False, error="RIFFUSION_API_KEY не задан в переменных окружения")
+            # Временно возвращаем демо-аудио вместо ошибки
+            return GenerateBeatResponse(
+                success=True, 
+                audio_url="/audio_cache/demo_beat.mp3",
+                message="Демо-режим: RIFFUSION_API_KEY не настроен"
+            )
         
         # Основной Riffusion API
         url = "https://riffusionapi.com/api/generate-music"
@@ -227,7 +232,10 @@ async def generate_beat(request: GenerateBeatRequest):
         }
         
         # Отправляем запрос на генерацию
+        print(f"Отправляем запрос на генерацию с промптом: {prompt}")
         resp = requests.post(url, headers=headers, json=data, timeout=120)
+        print(f"Riffusion response: {resp.status_code}, {resp.text}")
+        
         if resp.status_code != 200:
             return GenerateBeatResponse(success=False, error=f"Riffusion API error: {resp.text}")
         
@@ -285,9 +293,14 @@ async def check_generation_status(request: GenerateBeatStatusRequest):
     """
     try:
         request_id = request.request_id
+        if not request_id:
+            return JSONResponse(content={"success": False, "error": "request_id не указан"})
+            
         RIFFUSION_API_KEY = os.getenv("RIFFUSION_API_KEY")
         if not RIFFUSION_API_KEY:
             return JSONResponse(content={"success": False, "error": "RIFFUSION_API_KEY не задан"})
+        
+        print(f"Проверяем статус для request_id: {request_id}")
         
         # Правильный URL для проверки статуса Riffusion согласно документации
         url = "https://riffusionapi.com/api/generate-music"
@@ -301,6 +314,8 @@ async def check_generation_status(request: GenerateBeatStatusRequest):
         }
         
         resp = requests.post(url, headers=headers, json=data, timeout=30)
+        print(f"Riffusion status response: {resp.status_code}, {resp.text}")
+        
         if resp.status_code != 200:
             return JSONResponse(content={"success": False, "error": f"Ошибка проверки статуса: {resp.text}"})
         
@@ -309,9 +324,9 @@ async def check_generation_status(request: GenerateBeatStatusRequest):
         
         # Если статус complete и есть audio_url, скачиваем файл
         if result.get("status") == "complete":
-            data = result.get("data", {})
-            if data and "data" in data and len(data["data"]) > 0:
-                audio_url = data["data"][0].get("stream_audio_url")
+            data_obj = result.get("data", {})
+            if data_obj and "data" in data_obj and len(data_obj["data"]) > 0:
+                audio_url = data_obj["data"][0].get("stream_audio_url")
                 if audio_url:
                     try:
                         print(f"Скачиваем аудио файл: {audio_url}")
@@ -336,4 +351,6 @@ async def check_generation_status(request: GenerateBeatStatusRequest):
         
     except Exception as e:
         print(f"Ошибка в check_generation_status: {e}")
+        import traceback
+        traceback.print_exc()
         return JSONResponse(content={"success": False, "error": str(e)}) 
