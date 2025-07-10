@@ -195,17 +195,8 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # Подсчитываем оставшиеся анализы
-    remaining_analyses = 0
-    if user.account_type == "pro":
-        remaining_analyses = -1  # Безлимитный
-    else:
-        from datetime import date
-        today = date.today()
-        if not user.last_usage_date or user.last_usage_date.date() != today:
-            remaining_analyses = 3  # Новый день - полный лимит
-        else:
-            remaining_analyses = max(0, 3 - user.daily_usage)
+    # Подсчитываем оставшиеся анализы используя новую логику
+    remaining_analyses = auth_service.get_remaining_analyses(db, user)
     
     return {
         "id": user.id,
@@ -261,17 +252,8 @@ async def update_profile(
     db.commit()
     db.refresh(user)
     
-    # Подсчитываем оставшиеся анализы
-    remaining_analyses = 0
-    if user.account_type == "pro":
-        remaining_analyses = -1  # Безлимитный
-    else:
-        from datetime import date
-        today = date.today()
-        if not user.last_usage_date or user.last_usage_date.date() != today:
-            remaining_analyses = 3  # Новый день - полный лимит
-        else:
-            remaining_analyses = max(0, 3 - user.daily_usage)
+    # Подсчитываем оставшиеся анализы используя новую логику
+    remaining_analyses = auth_service.get_remaining_analyses(db, user)
     
     return {
         "id": user.id,

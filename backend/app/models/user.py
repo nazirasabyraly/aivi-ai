@@ -20,10 +20,11 @@ class User(Base):
     verification_code = Column(String, nullable=True)
     verification_code_expires = Column(DateTime, nullable=True)
     
-    # Google OAuth fields
+    # OAuth fields
     google_id = Column(String, unique=True, nullable=True, index=True)
+    clerk_id = Column(String, unique=True, nullable=True, index=True)
     avatar_url = Column(String, nullable=True)
-    provider = Column(String, default="email")  # "email" or "google"
+    provider = Column(String, default="email")  # "email", "google", or "clerk"
     
     # Optional user profile fields
     name = Column(String, nullable=True)

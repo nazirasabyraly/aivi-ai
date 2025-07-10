@@ -399,19 +399,36 @@ const InteractiveStudio: React.FC = () => {
       });
 
       const data = await response.json();
+      console.log('🎵 Generate beat response:', data);
 
       if (response.ok) {
-        setBeatsData(prev => ({ 
-          ...prev, 
-          beatRequestId: data.request_id,
-          generatingBeat: true 
-        }));
-        
-        // Запускаем обновление сообщений независимо от polling
-        startProgressUpdates();
-        
-        // Poll for completion
-        pollGenerationStatus(data.request_id);
+        if (data.request_id) {
+          setBeatsData(prev => ({ 
+            ...prev, 
+            beatRequestId: data.request_id,
+            generatingBeat: true 
+          }));
+          
+          // Запускаем обновление сообщений независимо от polling
+          startProgressUpdates();
+          
+          // Poll for completion
+          pollGenerationStatus(data.request_id);
+        } else if (data.audio_url) {
+          // Прямой результат
+          setBeatsData(prev => ({
+            ...prev,
+            generatedBeatUrl: `${API_BASE_URL}${data.audio_url}`,
+            generatingBeat: false,
+            generationMessage: "✅ Песня готова!",
+            generationProgress: 100
+          }));
+          setSuccess(t('studio_beat_ready'));
+          setActiveSection('beats');
+        } else {
+          setError(data.message || 'Неожиданный ответ от сервера');
+          setBeatsData(prev => ({ ...prev, generatingBeat: false }));
+        }
       } else {
         setError(data.detail || 'Failed to generate beat');
         setBeatsData(prev => ({ ...prev, generatingBeat: false }));
@@ -442,6 +459,8 @@ const InteractiveStudio: React.FC = () => {
         // Обновляем прогресс перед каждым запросом
         updateProgress(attempts);
         
+        console.log(`🔄 Polling status for request_id: ${requestId}, attempt: ${attempts + 1}`);
+        
         const response = await fetch(`${API_BASE_URL}/chat/generate-beat/status`, {
           method: 'POST',
           headers: {
@@ -450,8 +469,16 @@ const InteractiveStudio: React.FC = () => {
           body: JSON.stringify({ request_id: requestId }),
         });
 
+        console.log(`📡 Status response: ${response.status} ${response.statusText}`);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`❌ Status request failed: ${response.status} - ${errorText}`);
+          throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+
         const data = await response.json();
-        console.log('Generation status response:', data);
+        console.log('🎵 Generation status response:', data);
 
         if (data.success && data.status) {
           const status = data.status.status;

@@ -292,12 +292,17 @@ async def check_generation_status(request: GenerateBeatStatusRequest):
     Проверяет статус генерации музыки
     """
     try:
+        print(f"📝 Получен запрос статуса: {request}")
+        print(f"📝 request_id: {request.request_id}")
+        
         request_id = request.request_id
         if not request_id:
+            print("❌ request_id не указан")
             return JSONResponse(content={"success": False, "error": "request_id не указан"})
             
         RIFFUSION_API_KEY = os.getenv("RIFFUSION_API_KEY")
         if not RIFFUSION_API_KEY:
+            print("❌ RIFFUSION_API_KEY не задан")
             return JSONResponse(content={"success": False, "error": "RIFFUSION_API_KEY не задан"})
         
         print(f"Проверяем статус для request_id: {request_id}")

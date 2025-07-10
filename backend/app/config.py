@@ -47,3 +47,13 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 # OAuth Configuration
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8001")
 # На продакшн сервере установите: BACKEND_BASE_URL=https://aivi-ai.it.com/api
+
+# Clerk Configuration
+CLERK_PUBLIC_KEY = os.getenv("CLERK_PUBLIC_KEY")
+CLERK_SECRET_KEY = os.getenv("CLERK_SECRET_KEY")
+
+# Проверяем настройки Clerk
+if CLERK_PUBLIC_KEY and CLERK_SECRET_KEY:
+    print("✅ Clerk настроен")
+else:
+    print("⚠️  Clerk не настроен (CLERK_PUBLIC_KEY или CLERK_SECRET_KEY отсутствуют)")

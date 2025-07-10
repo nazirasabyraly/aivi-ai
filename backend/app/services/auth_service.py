@@ -9,6 +9,7 @@ from ..models.user import User
 from ..database import get_db
 from ..config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 from .email_service import EmailService
+from .clerk_service import ClerkService
 
 # Настройка хеширования паролей
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -17,6 +18,7 @@ class AuthService:
     def __init__(self):
         self.pwd_context = pwd_context
         self.email_service = EmailService()
+        self.clerk_service = ClerkService()
     
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
         """Проверяет пароль"""
@@ -74,10 +76,14 @@ class AuthService:
         """Получает пользователя по Google ID"""
         return db.query(User).filter(User.google_id == google_id).first()
     
+    def get_user_by_clerk_id(self, db: Session, clerk_id: str) -> Optional[User]:
+        """Получает пользователя по Clerk ID"""
+        return db.query(User).filter(User.clerk_id == clerk_id).first()
+    
     def create_user(self, db: Session, email: str, username: str, password: str = None, 
                    verification_code: str = None, verification_expiry: datetime = None,
-                   google_id: str = None, avatar_url: str = None, name: str = None,
-                   provider: str = "email") -> User:
+                   google_id: str = None, clerk_id: str = None, avatar_url: str = None, 
+                   name: str = None, provider: str = "email") -> User:
         """Создает нового пользователя"""
         hashed_password = None
         if password:
@@ -89,11 +95,14 @@ class AuthService:
             hashed_password=hashed_password,
             verification_code=verification_code,
             verification_code_expires=verification_expiry,
-            is_verified=True if provider == "google" else (False if verification_code else True),
+            is_verified=True if provider in ["google", "clerk"] else (False if verification_code else True),
             google_id=google_id,
+            clerk_id=clerk_id,
             avatar_url=avatar_url,
             name=name,
-            provider=provider
+            provider=provider,
+            daily_usage=0,  # Устанавливаем 0 при создании
+            last_usage_date=None  # Не устанавливаем дату до первого использования
         )
         db.add(db_user)
         db.commit()
@@ -211,20 +220,97 @@ class AuthService:
         
         return user
     
+    def create_or_update_clerk_user(self, db: Session, clerk_id: str, email: str, 
+                                   name: str = None, username: str = None, 
+                                   avatar_url: str = None, email_verified: bool = False) -> User:
+        """Создает или обновляет пользователя Clerk"""
+        # Проверяем, существует ли пользователь с таким Clerk ID
+        user = self.get_user_by_clerk_id(db, clerk_id)
+        
+        if user:
+            # Обновляем существующего пользователя
+            user.email = email
+            user.name = name
+            user.avatar_url = avatar_url
+            user.is_verified = email_verified
+            if username:
+                user.username = username
+            db.commit()
+            db.refresh(user)
+            return user
+        
+        # Проверяем, существует ли пользователь с таким email
+        user = self.get_user_by_email(db, email)
+        if user:
+            # Связываем существующий аккаунт с Clerk
+            user.clerk_id = clerk_id
+            user.avatar_url = avatar_url
+            user.provider = "clerk"
+            user.is_verified = email_verified
+            if name:
+                user.name = name
+            db.commit()
+            db.refresh(user)
+            return user
+        
+        # Создаем нового пользователя Clerk
+        # Генерируем уникальное имя пользователя
+        if not username:
+            username = email.split('@')[0]
+        
+        counter = 1
+        original_username = username
+        while self.get_user_by_username(db, username):
+            username = f"{original_username}{counter}"
+            counter += 1
+        
+        user = self.create_user(
+            db=db,
+            email=email,
+            username=username,
+            clerk_id=clerk_id,
+            avatar_url=avatar_url,
+            name=name,
+            provider="clerk"
+        )
+        
+        return user
+    
+    def reset_daily_limits_if_needed(self, db: Session, user: User) -> None:
+        """Сбрасывает дневные лимиты, если наступил новый день"""
+        from datetime import date, datetime
+        
+        today = date.today()
+        
+        # Если last_usage_date не установлена или это новый день
+        if not user.last_usage_date or user.last_usage_date.date() != today:
+            user.daily_usage = 0
+            user.last_usage_date = datetime.utcnow()
+            db.commit()
+            print(f"🔄 Сброшены лимиты для пользователя {user.username}: daily_usage=0, новая дата={today}")
+    
+    def get_remaining_analyses(self, db: Session, user: User) -> int:
+        """Возвращает количество оставшихся анализов для пользователя"""
+        # PRO пользователи имеют безлимитный доступ
+        if user.account_type == "pro":
+            return -1  # Безлимитный
+        
+        # Сбрасываем лимиты если нужно
+        self.reset_daily_limits_if_needed(db, user)
+        
+        # Возвращаем оставшиеся анализы
+        return max(0, 3 - user.daily_usage)
+    
     def check_usage_limit(self, db: Session, user: User) -> bool:
         """Проверяет и обновляет лимит использования для пользователя"""
         # PRO пользователи имеют безлимитный доступ
         if user.account_type == "pro":
             return True
         
-        # Проверяем, изменилась ли дата (новый день)
-        today = date.today()
-        if not user.last_usage_date or user.last_usage_date.date() != today:
-            # Сброс счетчика для нового дня
-            user.daily_usage = 0
-            user.last_usage_date = datetime.utcnow()
+        # Сбрасываем лимиты если нужно
+        self.reset_daily_limits_if_needed(db, user)
         
-        # Проверяем лимит
+        # Проверяем лимит ПЕРЕД увеличением счетчика
         if user.daily_usage >= 3:
             raise HTTPException(
                 status_code=429, 
@@ -241,4 +327,5 @@ class AuthService:
         db.commit()
         db.refresh(user)
         
+        print(f"✅ Анализ разрешен для пользователя {user.username}: {user.daily_usage}/3")
         return True 
