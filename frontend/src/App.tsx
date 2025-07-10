@@ -24,6 +24,10 @@ const App = () => {
       publishableKey={clerkPubKey || ''}
       telemetry={false}
       supportEmail="support@aivi-ai.it.com"
+      afterSignInUrl="/dashboard"
+      afterSignUpUrl="/dashboard"
+      signInUrl="/login"
+      signUpUrl="/login"
     >
       <div>
         <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 1000 }}>

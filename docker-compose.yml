@@ -37,8 +37,9 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    environment:
-      - VITE_API_URL=https://aivi-ai.it.com/api
+      args:
+        - VITE_API_URL=https://aivi-ai.it.com/api
+        - VITE_CLERK_PUBLIC_KEY=${CLERK_PUBLIC_KEY}
     ports:
       - "3000:3000"
     depends_on:
