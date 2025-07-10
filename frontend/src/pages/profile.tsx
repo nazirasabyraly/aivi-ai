@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { API_BASE_URL } from '../config';
+import { useUser, useClerk, useAuth } from '@clerk/clerk-react';
 import './profile.css';
 
 interface UserProfile {
@@ -21,6 +22,9 @@ interface UserProfile {
 const Profile: React.FC = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const { user, isLoaded } = useUser(); // Clerk user
+  const { signOut } = useClerk(); // Clerk logout
+  const { getToken } = useAuth(); // Clerk token
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -30,12 +34,59 @@ const Profile: React.FC = () => {
 
   useEffect(() => {
     const fetchProfile = async () => {
+      // Ждем загрузки Clerk
+      if (!isLoaded) {
+        setLoading(true);
+        return;
+      }
+
+      // Проверяем авторизацию: Clerk пользователь или старый токен
       const token = localStorage.getItem('auth_token');
-      if (!token) {
+      if (!user && !token) {
         navigate('/login');
         return;
       }
 
+      // Если это Clerk пользователь, получаем данные с backend
+      if (user) {
+        try {
+          // Получаем токен Clerk для авторизации на backend
+          const token = await getToken();
+          
+          const response = await fetch(`${API_BASE_URL}/users/me`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            setProfile(data);
+          } else {
+            // Fallback к данным Clerk если backend недоступен
+            const clerkProfile: UserProfile = {
+              id: 0,
+              username: user.username || user.emailAddresses[0]?.emailAddress.split('@')[0] || 'User',
+              email: user.emailAddresses[0]?.emailAddress || '',
+              name: user.fullName || user.firstName || '',
+              avatar_url: user.imageUrl || '',
+              account_type: 'basic',
+              daily_usage: 0,
+              remaining_analyses: 3,
+              is_verified: user.emailAddresses[0]?.verification?.status === 'verified' || false,
+              provider: 'clerk',
+              created_at: user.createdAt?.toISOString() || new Date().toISOString()
+            };
+            setProfile(clerkProfile);
+          }
+        } catch (error) {
+          console.error('Error fetching Clerk user profile:', error);
+          setError('Ошибка загрузки профиля');
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
+
+      // Загружаем профиль для старых пользователей
       try {
         const response = await fetch(`${API_BASE_URL}/users/me`, {
           headers: {
@@ -63,11 +114,18 @@ const Profile: React.FC = () => {
     };
 
     fetchProfile();
-  }, [navigate]);
+  }, [user, isLoaded, navigate, getToken, t]);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Выходим из Clerk если пользователь авторизован через Clerk
+    if (user) {
+      await signOut();
+    }
+    
+    // Очищаем старые токены
     localStorage.removeItem('auth_token');
     localStorage.removeItem('user_info');
+    
     navigate('/login');
   };
 
@@ -196,7 +254,11 @@ const Profile: React.FC = () => {
 
             <div className="info-group">
               <label>{t('username') || 'Имя пользователя'}:</label>
-              {editingName ? (
+              {profile.provider === 'clerk' ? (
+                <div className="name-display">
+                  <span>{profile.username}</span>
+                </div>
+              ) : editingName ? (
                 <div className="edit-name-container">
                   <input
                     type="text"
@@ -250,15 +312,7 @@ const Profile: React.FC = () => {
               </span>
             </div>
 
-            <div className="info-group">
-              <label>{t('registration_method') || 'Способ регистрации'}:</label>
-              <span className="provider">
-                {profile.provider === 'google' 
-                  ? t('google_oauth') || 'Google OAuth' 
-                  : t('email_registration') || 'Email регистрация'
-                }
-              </span>
-            </div>
+
 
             <div className="info-group">
               <label>{t('registration_date') || 'Дата регистрации'}:</label>
@@ -296,4 +350,4 @@ const Profile: React.FC = () => {
   );
 };
 
-export default Profile; 
+export default Profile;

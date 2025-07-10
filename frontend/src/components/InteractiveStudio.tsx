@@ -3,6 +3,7 @@ import { API_BASE_URL, handleTokenExpiration, checkTokenValidity } from '../conf
 import { useTranslation } from 'react-i18next';
 import BeautifulAudioPlayer from './BeautifulAudioPlayer';
 import './InteractiveStudio.css';
+import { useUser, useAuth } from '@clerk/clerk-react';
 
 interface MoodAnalysis {
   mood: string;
@@ -37,37 +38,91 @@ interface BeatsData {
 
 const InteractiveStudio: React.FC = () => {
   const { t, i18n } = useTranslation();
+  const { user } = useUser();
+  const { getToken } = useAuth();
+  
+  // Функция для загрузки состояния из localStorage
+  const loadStateFromStorage = () => {
+    try {
+      const savedState = localStorage.getItem('interactiveStudio_state');
+      if (savedState) {
+        const parsed = JSON.parse(savedState);
+        return {
+          moodAnalysis: parsed.moodAnalysis || null,
+          recommendations: parsed.recommendations || null,
+          beatsData: parsed.beatsData || { generatingBeat: false },
+          activeSection: parsed.activeSection || 'upload',
+          liked: parsed.liked || {},
+          activeRecommendationTab: parsed.activeRecommendationTab || 'personal',
+          youtubeCache: parsed.youtubeCache || {}
+        };
+      }
+    } catch (error) {
+      console.error('Error loading state from localStorage:', error);
+    }
+    return {
+      moodAnalysis: null,
+      recommendations: null,
+      beatsData: { generatingBeat: false },
+      activeSection: 'upload',
+      liked: {},
+      activeRecommendationTab: 'personal',
+      youtubeCache: {}
+    };
+  };
+
+  // Функция для сохранения состояния в localStorage
+  const saveStateToStorage = (state: any) => {
+    try {
+      localStorage.setItem('interactiveStudio_state', JSON.stringify(state));
+    } catch (error) {
+      console.error('Error saving state to localStorage:', error);
+    }
+  };
+
+  // Инициализация состояния с загрузкой из localStorage
+  const initialState = loadStateFromStorage();
+  
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
-  const [moodAnalysis, setMoodAnalysis] = useState<MoodAnalysis | null>(null);
+  const [moodAnalysis, setMoodAnalysis] = useState<MoodAnalysis | null>(initialState.moodAnalysis);
   const [recommendations, setRecommendations] = useState<{
     global: RecommendationData;
     personal: RecommendationData;
-  } | null>(null);
+  } | null>(initialState.recommendations);
   const [loadingRecommendations, setLoadingRecommendations] = useState(false);
-  const [beatsData, setBeatsData] = useState<BeatsData>({
-    generatingBeat: false,
-  });
+  const [beatsData, setBeatsData] = useState<BeatsData>(initialState.beatsData);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [activeSection, setActiveSection] = useState<'upload' | 'analysis' | 'recommendations' | 'beats'>('upload');
-  const [liked, setLiked] = useState<{ [key: string]: boolean }>({});
+  const [activeSection, setActiveSection] = useState<'upload' | 'analysis' | 'recommendations' | 'beats'>(initialState.activeSection);
+  const [liked, setLiked] = useState<{ [key: string]: boolean }>(initialState.liked);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const analysisRef = useRef<HTMLDivElement>(null);
   const recommendationsRef = useRef<HTMLDivElement>(null);
   const [dragActive, setDragActive] = useState(false);
-  const [activeRecommendationTab, setActiveRecommendationTab] = useState<'personal' | 'global'>('personal');
+  const [activeRecommendationTab, setActiveRecommendationTab] = useState<'personal' | 'global'>(initialState.activeRecommendationTab);
   const [showLimitModal, setShowLimitModal] = useState(false);
   const [userProfile, setUserProfile] = useState<any>(null);
 
   // Helper function to get YouTube video ID (simplified search)
   // Кеш для YouTube видео
-  const [youtubeCache, setYoutubeCache] = useState<{ [key: string]: string }>({});
+  const [youtubeCache, setYoutubeCache] = useState<{ [key: string]: string }>(initialState.youtubeCache);
   const [loadingVideos, setLoadingVideos] = useState<{ [key: string]: boolean }>({});
   
   // Функция проверки лимита пользователя
   const checkUserLimit = async (): Promise<boolean> => {
-    const token = localStorage.getItem('auth_token');
+    // Проверяем авторизацию через Clerk или localStorage
+    let token = localStorage.getItem('auth_token');
+    
+    if (!token && user) {
+      // Если это Clerk пользователь, получаем токен
+      try {
+        token = await getToken();
+      } catch (error) {
+        console.error('Error getting Clerk token:', error);
+      }
+    }
+    
     if (!token) {
       setError('⚠️ Для анализа медиафайлов необходима авторизация. Нажмите "Выйти" в левом верхнем углу и войдите в систему.');
       return false; // Блокируем неавторизованных пользователей
@@ -142,6 +197,20 @@ const InteractiveStudio: React.FC = () => {
     setYoutubeCache(prev => ({ ...prev, [cacheKey]: fallbackId }));
     return fallbackId;
   };
+
+  // Автоматическое сохранение состояния при изменениях
+  useEffect(() => {
+    const stateToSave = {
+      moodAnalysis,
+      recommendations,
+      beatsData,
+      activeSection,
+      liked,
+      activeRecommendationTab,
+      youtubeCache
+    };
+    saveStateToStorage(stateToSave);
+  }, [moodAnalysis, recommendations, beatsData, activeSection, liked, activeRecommendationTab, youtubeCache]);
 
   // Clear messages after 5 seconds
   useEffect(() => {
@@ -234,7 +303,16 @@ const InteractiveStudio: React.FC = () => {
       formData.append('file', selectedFile);
       formData.append('language', i18n.language);
 
-      const token = localStorage.getItem('auth_token');
+      // Получаем токен (Clerk или localStorage)
+      let token = localStorage.getItem('auth_token');
+      if (!token && user) {
+        try {
+          token = await getToken();
+        } catch (error) {
+          console.error('Error getting Clerk token:', error);
+        }
+      }
+      
       const response = await fetch(`${API_BASE_URL}/chat/analyze-media`, {
         method: 'POST',
         headers: {
@@ -280,7 +358,16 @@ const InteractiveStudio: React.FC = () => {
     setActiveSection('recommendations');
 
     try {
-      const token = localStorage.getItem('auth_token');
+      // Получаем токен (Clerk или localStorage)
+      let token = localStorage.getItem('auth_token');
+      if (!token && user) {
+        try {
+          token = await getToken();
+        } catch (error) {
+          console.error('Error getting Clerk token:', error);
+        }
+      }
+      
       if (!token) {
         throw new Error('Authentication required');
       }
@@ -590,6 +677,15 @@ const InteractiveStudio: React.FC = () => {
     setSuccess(null);
     setActiveSection('upload');
     setLiked({});
+    setYoutubeCache({});
+    setActiveRecommendationTab('personal');
+    
+    // Очищаем localStorage
+    try {
+      localStorage.removeItem('interactiveStudio_state');
+    } catch (error) {
+      console.error('Error clearing localStorage:', error);
+    }
   };
 
   const handleUpgrade = () => {
@@ -605,8 +701,23 @@ const InteractiveStudio: React.FC = () => {
   return (
     <div className="studio-container">
       <div className="studio-header">
-        <h1>🎵 {t('studio_main_title')}</h1>
-        <p>{t('studio_main_subtitle')}</p>
+        <div className="header-content">
+          <div className="header-text">
+            <h1>🎵 {t('studio_main_title')}</h1>
+            <p>{t('studio_main_subtitle')}</p>
+          </div>
+          {(moodAnalysis || recommendations || beatsData.generatedBeatUrl) && (
+            <div className="header-actions">
+              <button 
+                onClick={resetAll} 
+                className="btn btn-outline"
+                title="Начать заново"
+              >
+                🔄 Начать заново
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Messages */}
@@ -812,15 +923,32 @@ const InteractiveStudio: React.FC = () => {
                           <div>🔍 Поиск видео...</div>
                         </div>
                       ) : videoId ? (
-                        <iframe
-                          width="100%"
-                          height="200"
-                          src={`https://www.youtube.com/embed/${videoId}`}
-                          frameBorder="0"
-                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                          allowFullScreen
-                          title={`${rec.name} - ${rec.artist}`}
-                        ></iframe>
+                        <div>
+                          {/* Скрываем iframe на мобильных устройствах */}
+                          {typeof window !== 'undefined' && /Mobi|Android|iPhone|iPad|iPod|Opera Mini|IEMobile/i.test(navigator.userAgent) ? null : (
+                            <iframe
+                              width="100%"
+                              height="200"
+                              src={`https://www.youtube.com/embed/${videoId}`}
+                              frameBorder="0"
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                              allowFullScreen
+                              title={`${rec.name} - ${rec.artist}`}
+                              style={{ borderRadius: '8px', marginBottom: '12px' }}
+                            ></iframe>
+                          )}
+                          {/* Красивый аудиоплеер */}
+                          <BeautifulAudioPlayer
+                            src={`${API_BASE_URL}/recommend/youtube-audio?video_id=${videoId}`}
+                            title={rec.name}
+                            artist={rec.artist}
+                            style={{ 
+                              width: '100%', 
+                              borderRadius: '8px',
+                              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
+                            }}
+                          />
+                        </div>
                       ) : (
                         <div style={{ 
                           width: '100%', 
@@ -883,6 +1011,7 @@ const InteractiveStudio: React.FC = () => {
                   title={t('studio_beat_title')}
                   artist="AI Generated"
                   style={{ width: '100%', marginTop: '16px' }}
+                  enableDownload={true}
                 />
               </div>
             ) : null}

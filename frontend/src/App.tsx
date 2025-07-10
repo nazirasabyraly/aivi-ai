@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import { ClerkProvider } from '@clerk/clerk-react'
+import { ClerkProvider, useUser } from '@clerk/clerk-react'
 import Landing from './pages/landing'
 import Login from './pages/login'
 import VerifyEmail from './pages/verify-email'
@@ -14,9 +14,6 @@ import LanguageSwitcher from './components/LanguageSwitcher'
 // Получаем Clerk Publishable Key из переменных окружения
 const clerkPubKey = (import.meta as any).env?.VITE_CLERK_PUBLIC_KEY
 
-console.log('🔑 Clerk Key:', clerkPubKey ? clerkPubKey.substring(0, 20) + '...' : 'НЕ НАЙДЕН')
-console.log('🔍 Full Clerk Key (first 30 chars):', clerkPubKey ? clerkPubKey.substring(0, 30) + '...' : 'НЕ НАЙДЕН')
-
 if (!clerkPubKey) {
   console.warn('⚠️ VITE_CLERK_PUBLIC_KEY не найден в переменных окружения')
 }
@@ -26,6 +23,7 @@ const App = () => {
     <ClerkProvider 
       publishableKey={clerkPubKey || ''}
       telemetry={false}
+      supportEmail="support@aivi-ai.it.com"
     >
       <div>
         <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 1000 }}>

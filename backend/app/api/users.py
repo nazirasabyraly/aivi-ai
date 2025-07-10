@@ -10,6 +10,7 @@ from ..schemas import (UserCreate, UserLogin, Token, User as UserSchema,
                       EmailVerification, ResendVerification, VerificationRequired,
                       GoogleAuthRequest, UserProfileUpdate)
 from ..services.auth_service import AuthService
+from ..dependencies import get_current_user
 
 router = APIRouter(tags=["users"])
 security = HTTPBearer()
@@ -174,42 +175,26 @@ async def login(user_data: UserLogin, db: Session = Depends(get_db)):
     )
 
 @router.get("/me")
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
+async def get_current_user_info(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Получение информации о текущем пользователе с данными профиля"""
-    username = auth_service.verify_token(credentials.credentials)
-    if username is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Недействительный токен",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    user = auth_service.get_user_by_username(db, username)
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Пользователь не найден",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
     # Подсчитываем оставшиеся анализы используя новую логику
-    remaining_analyses = auth_service.get_remaining_analyses(db, user)
+    remaining_analyses = auth_service.get_remaining_analyses(db, current_user)
     
     return {
-        "id": user.id,
-        "username": user.username,
-        "email": user.email,
-        "name": user.name,
-        "avatar_url": user.avatar_url,
-        "account_type": user.account_type,
-        "daily_usage": user.daily_usage,
+        "id": current_user.id,
+        "username": current_user.username,
+        "email": current_user.email,
+        "name": current_user.name,
+        "avatar_url": current_user.avatar_url,
+        "account_type": current_user.account_type,
+        "daily_usage": current_user.daily_usage,
         "remaining_analyses": remaining_analyses,
-        "is_verified": user.is_verified,
-        "provider": user.provider,
-        "created_at": user.created_at
+        "is_verified": current_user.is_verified,
+        "provider": current_user.provider,
+        "created_at": current_user.created_at
     }
 
 @router.put("/update-profile")
@@ -269,25 +254,4 @@ async def update_profile(
         "created_at": user.created_at
     }
 
-def get_current_user_dependency(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
-):
-    """Зависимость для получения текущего пользователя"""
-    username = auth_service.verify_token(credentials.credentials)
-    if username is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Недействительный токен",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    user = auth_service.get_user_by_username(db, username)
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Пользователь не найден",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    return user 
+ 

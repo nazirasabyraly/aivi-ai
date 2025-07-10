@@ -6,29 +6,46 @@ import { useTranslation } from 'react-i18next'
 import Recommendations from '../components/Recommendations'
 import Favorites from '../components/Favorites'
 import Profile from './profile'
+import { useUser, useClerk } from '@clerk/clerk-react'
 
 const Dashboard = () => {
   const navigate = useNavigate()
   const { t } = useTranslation()
+  const { user, isLoaded } = useUser() // Clerk user
+  const { signOut } = useClerk() // Clerk logout
   const [userProfile, setUserProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'studio' | 'recommendations' | 'favorites' | 'profile'>('studio')
 
   useEffect(() => {
-    // Проверяем только email/пароль авторизацию
-    const authToken = localStorage.getItem('auth_token')
-    if (!authToken) {
-      navigate('/')
+    // Ждем пока Clerk загрузится
+    if (!isLoaded) {
+      setLoading(true)
       return
     }
-    setLoading(false)
-  }, [navigate])
 
-  const handleLogout = () => {
+    // Проверяем авторизацию: либо Clerk пользователь, либо старый auth_token
+    const authToken = localStorage.getItem('auth_token')
+    if (!user && !authToken) {
+      navigate('/login')
+      return
+    }
+    
+    setLoading(false)
+  }, [user, isLoaded, navigate])
+
+  const handleLogout = async () => {
+    // Выходим из Clerk если пользователь авторизован через Clerk
+    if (user) {
+      await signOut()
+    }
+    
+    // Очищаем старые токены
     localStorage.removeItem('auth_token')
     localStorage.removeItem('user_info')
-    navigate('/')
+    
+    navigate('/login')
   }
 
   if (loading) {

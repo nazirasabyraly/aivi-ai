@@ -434,9 +434,19 @@ body, html, #root {
 
 .clerk-signin-wrapper {
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
   min-height: 50px;
+  gap: 8px;
+}
+
+.clerk-signin-description {
+  text-align: center;
+  color: #666;
+  font-size: 14px;
+  margin: 0;
+  line-height: 1.4;
 }
 
 /* Контейнер для Clerk аутентификации */

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { API_BASE_URL } from '../config';
 import { useTranslation } from 'react-i18next';
+import { useUser, useAuth } from '@clerk/clerk-react';
 import BeautifulAudioPlayer from './BeautifulAudioPlayer';
 
 interface SavedSong {
@@ -13,6 +14,8 @@ interface SavedSong {
 
 const Favorites: React.FC = () => {
   const { t } = useTranslation();
+  const { user, isLoaded } = useUser(); // Clerk user
+  const { getToken } = useAuth(); // Clerk token
   const [songs, setSongs] = useState<SavedSong[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -23,12 +26,46 @@ const Favorites: React.FC = () => {
     setLoading(true);
     setError(null);
     setSuccess(null);
+    
+    // Ждем загрузки Clerk
+    if (!isLoaded) {
+      setLoading(true);
+      return;
+    }
+    
+    // Проверяем авторизацию: Clerk пользователь или старый токен
     const token = localStorage.getItem('auth_token');
-    if (!token) {
-      setError(t('favorites_login_required'));
+    if (!user && !token) {
+      setError(t('favorites_login_required') || 'Войдите в систему, чтобы посмотреть избранное');
       setLoading(false);
       return;
     }
+
+    // Для Clerk пользователей получаем токен и делаем запрос к API
+    if (user) {
+      try {
+        // Получаем токен Clerk для авторизации на backend
+        const token = await getToken();
+        
+        const resp = await fetch(`${API_BASE_URL}/media/saved-songs`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (resp.ok) {
+          const data = await resp.json();
+          setSongs(data);
+        } else {
+          setError('Ошибка загрузки избранного');
+        }
+      } catch (error) {
+        console.error('Error fetching Clerk user songs:', error);
+        setError('Ошибка сети');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+    
     try {
       const resp = await fetch(`${API_BASE_URL}/media/saved-songs`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -37,10 +74,10 @@ const Favorites: React.FC = () => {
         const data = await resp.json();
         setSongs(data);
       } else {
-        setError(t('favorites_load_failed'));
+        setError(t('favorites_load_failed') || 'Ошибка загрузки избранного');
       }
     } catch {
-      setError(t('favorites_load_error'));
+      setError(t('favorites_load_error') || 'Ошибка сети');
     } finally {
       setLoading(false);
     }
@@ -48,10 +85,23 @@ const Favorites: React.FC = () => {
 
   useEffect(() => {
     fetchSongs();
-  }, []);
+  }, [user, isLoaded, getToken, t]);
 
   const handleDelete = async (youtube_video_id: string) => {
-    const token = localStorage.getItem('auth_token');
+    let token: string | null = null;
+    
+    // Получаем токен в зависимости от типа пользователя
+    if (user) {
+      try {
+        token = await getToken();
+      } catch (error) {
+        console.error('Error getting Clerk token:', error);
+        return;
+      }
+    } else {
+      token = localStorage.getItem('auth_token');
+    }
+    
     if (!token) return;
     
     setDeletingId(youtube_video_id);

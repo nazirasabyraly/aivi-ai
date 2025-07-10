@@ -60,125 +60,55 @@ async def oauth_debug(request: Request):
         "session_secret": "SET" if os.getenv("SESSION_SECRET_KEY") else "NOT_SET"
     }
 
-@router.get("/google")
-async def login_via_google(request: Request):
-    # Используем правильный redirect URI
-    redirect_uri = f"{BACKEND_BASE_URL}/auth/google/callback"
-    logger.info(f"🔗 OAuth redirect URI: {redirect_uri}")
-    
+# Google OAuth routes are now handled by Clerk
+# These endpoints are deprecated and will be removed
+
+@router.post("/clerk/webhook")
+async def clerk_webhook(request: Request, db: Session = Depends(get_db)):
+    """
+    Webhook endpoint для Clerk
+    Обрабатывает события создания/обновления пользователей
+    """
     try:
-        # Создаем URL для Google OAuth вручную
-        from urllib.parse import urlencode
-        import secrets
+        payload = await request.body()
+        headers = dict(request.headers)
         
-        # Создаем state для CSRF защиты
-        state = secrets.token_urlsafe(32)
-        request.session["oauth_state"] = state
+        # Проверяем webhook signature (в продакшене обязательно!)
+        # webhook_secret = os.getenv("CLERK_WEBHOOK_SECRET")
+        # if webhook_secret:
+        #     ... проверка подписи ...
         
-        params = {
-            "client_id": GOOGLE_CLIENT_ID,
-            "redirect_uri": redirect_uri,
-            "scope": "openid email profile",
-            "response_type": "code",
-            "state": state,
-            "prompt": "select_account"
-        }
+        event = await request.json()
+        event_type = event.get("type")
+        data = event.get("data")
         
-        auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
-        logger.info(f"🔗 Manual OAuth URL: {auth_url}")
+        logger.info(f"📨 Clerk webhook event: {event_type}")
         
-        return RedirectResponse(auth_url)
+        if event_type in ["user.created", "user.updated"]:
+            user_data = data
+            clerk_id = user_data.get("id")
+            email_addresses = user_data.get("email_addresses", [])
+            
+            if email_addresses:
+                primary_email = next((email for email in email_addresses if email.get("verification", {}).get("status") == "verified"), email_addresses[0])
+                email = primary_email.get("email_address")
+                email_verified = primary_email.get("verification", {}).get("status") == "verified"
+                
+                # Создаем или обновляем пользователя
+                user = auth_service.create_or_update_clerk_user(
+                    db=db,
+                    clerk_id=clerk_id,
+                    email=email,
+                    name=f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip(),
+                    username=user_data.get("username"),
+                    avatar_url=user_data.get("image_url"),
+                    email_verified=email_verified
+                )
+                
+                logger.info(f"✅ User {email} synced from Clerk")
+        
+        return {"status": "success"}
         
     except Exception as e:
-        logger.error(f"❌ OAuth authorize error: {e}")
-        raise HTTPException(status_code=500, detail="OAuth authorization failed")
-
-@router.get("/google/callback")
-async def google_callback(request: Request, db: Session = Depends(get_db)):
-    try:
-        logger.info("🔄 Processing Google OAuth callback")
-        logger.info(f"📋 Request URL: {request.url}")
-        logger.info(f"📋 Query params: {dict(request.query_params)}")
-        
-        # Проверяем наличие error параметра
-        if "error" in request.query_params:
-            error = request.query_params["error"]
-            logger.error(f"❌ OAuth error: {error}")
-            return RedirectResponse(f"{FRONTEND_URL}/login?error=oauth_error")
-        
-        # Проверяем наличие кода авторизации
-        if "code" not in request.query_params:
-            logger.error("❌ No authorization code in callback")
-            return RedirectResponse(f"{FRONTEND_URL}/login?error=no_code")
-        
-        # Проверяем state для CSRF защиты
-        received_state = request.query_params.get("state")
-        session_state = request.session.get("oauth_state")
-        
-        if not received_state or received_state != session_state:
-            logger.error(f"❌ State mismatch: received={received_state}, session={session_state}")
-            return RedirectResponse(f"{FRONTEND_URL}/login?error=csrf_error")
-        
-        # Очищаем state из сессии
-        request.session.pop("oauth_state", None)
-        
-        # Получаем токен напрямую от Google
-        import httpx
-        from urllib.parse import urlencode
-        
-        token_data = {
-            "client_id": GOOGLE_CLIENT_ID,
-            "client_secret": GOOGLE_CLIENT_SECRET,
-            "code": request.query_params["code"],
-            "grant_type": "authorization_code",
-            "redirect_uri": f"{BACKEND_BASE_URL}/auth/google/callback"
-        }
-        
-        async with httpx.AsyncClient() as client:
-            token_response = await client.post(
-                "https://oauth2.googleapis.com/token",
-                data=token_data,
-                headers={"Content-Type": "application/x-www-form-urlencoded"}
-            )
-            
-            if token_response.status_code != 200:
-                logger.error(f"❌ Token request failed: {token_response.text}")
-                return RedirectResponse(f"{FRONTEND_URL}/login?error=token_failed")
-            
-            token_json = token_response.json()
-            access_token = token_json.get("access_token")
-            id_token = token_json.get("id_token")
-            
-            if not access_token or not id_token:
-                logger.error("❌ No access token or id token received")
-                return RedirectResponse(f"{FRONTEND_URL}/login?error=no_token")
-            
-            # Получаем информацию о пользователе
-            user_response = await client.get(
-                "https://www.googleapis.com/oauth2/v2/userinfo",
-                headers={"Authorization": f"Bearer {access_token}"}
-            )
-            
-            if user_response.status_code != 200:
-                logger.error(f"❌ User info request failed: {user_response.text}")
-                return RedirectResponse(f"{FRONTEND_URL}/login?error=userinfo_failed")
-            
-            user_info = user_response.json()
-            logger.info(f"👤 User info: {user_info.get('email')}")
-            
-            user = auth_service.create_or_update_google_user(
-                db=db,
-                google_id=user_info['id'],
-                email=user_info['email'],
-                name=user_info.get('name'),
-                avatar_url=user_info.get('picture')
-            )
-
-            jwt_token = auth_service.create_access_token(data={"sub": user.username})
-
-            # редиректим на frontend с токеном
-            return RedirectResponse(f"{FRONTEND_URL}/login?token={jwt_token}")
-        
-    except Exception as e:
-        logger.error(f"❌ OAuth callback error: {e}")
-        return RedirectResponse(f"{FRONTEND_URL}/login?error=oauth_failed")
+        logger.error(f"❌ Clerk webhook error: {e}")
+        raise HTTPException(status_code=400, detail="Webhook processing failed")

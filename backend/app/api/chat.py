@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, status, Form
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from typing import Dict, Any, List
 import json
 from ..services.openai_service import OpenAIService
@@ -358,4 +358,43 @@ async def check_generation_status(request: GenerateBeatStatusRequest):
         print(f"Ошибка в check_generation_status: {e}")
         import traceback
         traceback.print_exc()
-        return JSONResponse(content={"success": False, "error": str(e)}) 
+        return JSONResponse(content={"success": False, "error": str(e)})
+
+@router.get("/download-beat/{filename}")
+async def download_beat(filename: str):
+    """
+    Скачивает сгенерированную музыку
+    """
+    try:
+        # Проверяем безопасность имени файла
+        if ".." in filename or "/" in filename or "\\" in filename:
+            raise HTTPException(status_code=400, detail="Недопустимое имя файла")
+        
+        # Проверяем что файл существует
+        file_path = os.path.join(AUDIO_CACHE_DIR, filename)
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="Файл не найден")
+        
+        # Определяем MIME тип
+        if filename.endswith('.mp3'):
+            media_type = 'audio/mpeg'
+        elif filename.endswith('.wav'):
+            media_type = 'audio/wav'
+        elif filename.endswith('.m4a'):
+            media_type = 'audio/mp4'
+        else:
+            media_type = 'application/octet-stream'
+        
+        # Возвращаем файл для скачивания
+        return FileResponse(
+            path=file_path,
+            media_type=media_type,
+            filename=f"aivi_generated_music_{filename}",
+            headers={"Content-Disposition": f"attachment; filename=aivi_generated_music_{filename}"}
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Ошибка скачивания файла {filename}: {e}")
+        raise HTTPException(status_code=500, detail="Ошибка скачивания файла") 

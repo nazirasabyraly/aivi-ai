@@ -13,6 +13,22 @@
   color: white;
 }
 
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.header-text {
+  flex: 1;
+}
+
+.header-actions {
+  margin-left: 2rem;
+}
+
 .studio-header h1 {
   font-size: 3rem;
   margin-bottom: 0.5rem;
@@ -24,6 +40,24 @@
   font-size: 1.2rem;
   opacity: 0.9;
   margin: 0;
+}
+
+.btn-outline {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  padding: 0.7rem 1.5rem;
+  border-radius: 12px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+}
+
+.btn-outline:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 /* Messages */
@@ -441,6 +475,9 @@
   transition: all 0.3s ease;
   position: relative;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 
 .recommendation-card::before {
@@ -502,19 +539,17 @@
   width: 100%;
   margin: 1rem 0;
   border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   transition: transform 0.2s ease;
 }
 
 .youtube-container:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
 }
 
 .youtube-container iframe {
   border-radius: 12px;
   display: block;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .btn-like {
@@ -687,6 +722,16 @@
     padding: 1rem;
   }
   
+  .header-content {
+    flex-direction: column;
+    gap: 1rem;
+    text-align: center;
+  }
+  
+  .header-actions {
+    margin-left: 0;
+  }
+  
   .studio-header h1 {
     font-size: 2rem;
   }
@@ -707,6 +752,11 @@
   
   .recommendations-grid {
     grid-template-columns: 1fr;
+  }
+  
+  /* На мобильных устройствах скрываем iframe и показываем только плеер */
+  .youtube-container iframe {
+    display: none;
   }
   
   .upload-area {

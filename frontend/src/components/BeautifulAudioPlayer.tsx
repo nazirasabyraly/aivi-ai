@@ -41,13 +41,15 @@ interface BeautifulAudioPlayerProps {
   title?: string;
   artist?: string;
   style?: React.CSSProperties;
+  enableDownload?: boolean;
 }
 
 const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({ 
   src, 
   title = 'Unknown Track', 
   artist = 'Unknown Artist',
-  style 
+  style,
+  enableDownload = false
 }) => {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
@@ -187,6 +189,25 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({
     const seconds = Math.floor(time % 60);
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
+
+  const handleDownload = useCallback(() => {
+    if (!enableDownload) return;
+    
+    // Извлекаем имя файла из URL
+    const urlParts = src.split('/');
+    const filename = urlParts[urlParts.length - 1];
+    
+    // Создаем ссылку для скачивания
+    const downloadUrl = src.replace('/audio_cache/', '/chat/download-beat/');
+    
+    // Создаем временную ссылку и кликаем по ней
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = `aivi_generated_music_${filename}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, [src, enableDownload]);
 
   // Loading state with better progress indication
   if (loading) {
@@ -405,6 +426,33 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({
             </div>
           )}
         </div>
+
+        {/* Download Button */}
+        {enableDownload && (
+          <button
+            onClick={handleDownload}
+            style={{
+              background: 'rgba(255, 255, 255, 0.2)',
+              border: 'none',
+              color: 'white',
+              fontSize: '16px',
+              cursor: 'pointer',
+              padding: '8px',
+              borderRadius: '8px',
+              transition: 'all 0.2s ease',
+              backdropFilter: 'blur(10px)'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.3)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+            }}
+            title="Скачать музыку"
+          >
+            📥
+          </button>
+        )}
       </div>
 
       {/* Progress Bar */}

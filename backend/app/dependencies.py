@@ -22,9 +22,13 @@ def get_current_user(
             return user
     
     # Если не получилось, пробуем как Clerk токен
+    print(f"🔍 Trying Clerk token verification...")
     if auth_service.clerk_service.is_configured():
+        print(f"✅ ClerkService is configured")
         try:
+            print(f"🎯 Verifying Clerk token: {token[:20]}...")
             payload = auth_service.clerk_service.verify_token(token)
+            print(f"📦 Clerk token payload: {payload}")
             if payload:
                 user_info = auth_service.clerk_service.extract_user_info(payload)
                 clerk_id = user_info.get("clerk_id")
@@ -34,10 +38,12 @@ def get_current_user(
                     user = auth_service.get_user_by_clerk_id(db, clerk_id)
                     
                     if user:
+                        print(f"✅ Found existing Clerk user: {user.email}")
                         return user
                     
-                    # Если пользователь не найден, создаем его
+                    # Если пользователь не найден, создаем его автоматически
                     if user_info.get("email"):
+                        print(f"📝 Creating new Clerk user: {user_info['email']}")
                         user = auth_service.create_or_update_clerk_user(
                             db=db,
                             clerk_id=clerk_id,
@@ -47,10 +53,17 @@ def get_current_user(
                             avatar_url=user_info.get("picture"),
                             email_verified=user_info.get("email_verified", False)
                         )
+                        print(f"✅ Created Clerk user in DB: {user.email} (ID: {user.id})")
                         return user
-        except HTTPException:
+        except HTTPException as e:
             # Clerk токен невалидный, продолжаем
+            print(f"❌ Clerk token verification failed: {e}")
             pass
+        except Exception as e:
+            print(f"❌ Unexpected error in Clerk verification: {e}")
+            pass
+    else:
+        print(f"❌ ClerkService is not configured")
     
     # Если ни один метод не сработал
     raise HTTPException(

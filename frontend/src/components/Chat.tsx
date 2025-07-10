@@ -917,6 +917,24 @@ const Chat: React.FC<ChatProps> = ({ userPreferences }) => {
                 <div style={{ marginTop: 18 }}>
                   <b>🎶 Сгенерированный бит:</b>
                   <AudioWithCache src={message.generatedBeatUrl} style={{ width: 220, marginTop: 8 }} />
+                  <div style={{ marginTop: 8 }}>
+                    <a 
+                      href={message.generatedBeatUrl.replace('/audio_cache/', '/chat/download-beat/')}
+                      download
+                      style={{
+                        display: 'inline-block',
+                        padding: '8px 16px',
+                        background: '#1DB954',
+                        color: 'white',
+                        textDecoration: 'none',
+                        borderRadius: '6px',
+                        fontSize: '14px',
+                        fontWeight: '600'
+                      }}
+                    >
+                      📥 Скачать
+                    </a>
+                  </div>
                 </div>
               )}
               <div className="message-time">
