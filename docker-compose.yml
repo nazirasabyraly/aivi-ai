@@ -25,7 +25,7 @@ services:
     env_file:
       - ./.env
     ports:
-      - "8001:8001"
+      - "8000:8000"
     volumes:
       - ./backend/audio_cache:/app/audio_cache
     depends_on:
@@ -37,9 +37,9 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      args:
-        - VITE_API_URL=https://aivi-ai.it.com/api
-        - VITE_CLERK_PUBLIC_KEY=${CLERK_PUBLIC_KEY}
+    environment:
+      - VITE_API_URL=https://aivi-ai.it.com/api
+      - VITE_CLERK_PUBLIC_KEY=${CLERK_PUBLIC_KEY}
     ports:
       - "3000:3000"
     depends_on:

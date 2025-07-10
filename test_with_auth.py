@@ -20,7 +20,7 @@ def test_with_auth():
             "username": "testuser",
             "password": "testpassword"
         }
-        register_resp = requests.post(f"{BASE_URL}/users/register", json=register_data)
+        register_resp = requests.post(f"{BASE_URL}/api/users/register", json=register_data)
         print(f"Регистрация: {register_resp.status_code}")
         
         # Логинимся
@@ -28,7 +28,7 @@ def test_with_auth():
             "email": "test@example.com",
             "password": "testpassword"
         }
-        login_resp = requests.post(f"{BASE_URL}/users/login", json=login_data)
+        login_resp = requests.post(f"{BASE_URL}/api/users/login", json=login_data)
         if login_resp.status_code == 200:
             token_data = login_resp.json()
             token = token_data.get('access_token')
