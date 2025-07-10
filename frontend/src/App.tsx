@@ -15,6 +15,7 @@ import LanguageSwitcher from './components/LanguageSwitcher'
 const clerkPubKey = (import.meta as any).env?.VITE_CLERK_PUBLIC_KEY
 
 console.log('🔑 Clerk Key:', clerkPubKey ? clerkPubKey.substring(0, 20) + '...' : 'НЕ НАЙДЕН')
+console.log('🔍 Full Clerk Key (first 30 chars):', clerkPubKey ? clerkPubKey.substring(0, 30) + '...' : 'НЕ НАЙДЕН')
 
 if (!clerkPubKey) {
   console.warn('⚠️ VITE_CLERK_PUBLIC_KEY не найден в переменных окружения')
@@ -22,7 +23,10 @@ if (!clerkPubKey) {
 
 const App = () => {
   return (
-    <ClerkProvider publishableKey={clerkPubKey || ''}>
+    <ClerkProvider 
+      publishableKey={clerkPubKey || ''}
+      telemetry={false}
+    >
       <div>
         <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 1000 }}>
           <LanguageSwitcher />
