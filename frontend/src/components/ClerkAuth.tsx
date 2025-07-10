@@ -84,16 +84,14 @@ const ClerkAuth: React.FC<ClerkAuthProps> = ({ mode, onSuccess }) => {
           appearance={appearance}
           routing="virtual"
           signUpUrl="/login?mode=sign-up"
-          fallbackRedirectUrl="/dashboard"
-          forceRedirectUrl="/dashboard"
+          redirectUrl="/dashboard"
         />
       ) : (
         <SignUp 
           appearance={appearance}
           routing="virtual"
           signInUrl="/login?mode=sign-in"
-          fallbackRedirectUrl="/dashboard"
-          forceRedirectUrl="/dashboard"
+          redirectUrl="/dashboard"
         />
       )}
     </div>

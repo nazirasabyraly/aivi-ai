@@ -25,6 +25,8 @@ def get_current_user(
     print(f"🔍 Trying Clerk token verification...")
     if auth_service.clerk_service.is_configured():
         print(f"✅ ClerkService is configured")
+        print(f"🔑 Clerk public key: {auth_service.clerk_service.publishable_key[:30]}...")
+        print(f"🔗 JWKS URL: {auth_service.clerk_service.jwks_url}")
         try:
             print(f"🎯 Verifying Clerk token: {token[:20]}...")
             payload = auth_service.clerk_service.verify_token(token)
