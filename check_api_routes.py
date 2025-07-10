@@ -33,11 +33,11 @@ def main():
     # Список эндпоинтов для проверки
     endpoints = [
         ("/health", "Health check"),
-        ("/api/auth/ngrok-url", "Auth ngrok URL"),
-        ("/api/users/me", "Users me (ожидается 401/403)"),
-        ("/api/media/saved-songs", "Media saved songs (ожидается 401/403)"),
-        ("/api/chat/history", "Chat history (ожидается 401/403)"),
-        ("/api/recommend", "Recommendations (ожидается 401/403)"),
+        ("/auth/ngrok-url", "Auth ngrok URL"),
+        ("/users/me", "Users me (ожидается 401/403)"),
+        ("/media/saved-songs", "Media saved songs (ожидается 401/403)"),
+        ("/chat/history", "Chat history (ожидается 401/403)"),
+        ("/recommend", "Recommendations (ожидается 401/403)"),
     ]
     
     results = {}
@@ -61,14 +61,14 @@ def main():
         success = False
     
     # Auth ngrok-url должен быть 200
-    if results.get("/api/auth/ngrok-url") == 200:
-        print("✅ Auth эндпоинт доступен с префиксом /api")
+    if results.get("/auth/ngrok-url") == 200:
+        print("✅ Auth эндпоинт доступен")
     else:
-        print("❌ Auth эндпоинт недоступен с префиксом /api")
+        print("❌ Auth эндпоинт недоступен")
         success = False
     
     # Защищенные эндпоинты должны возвращать 401 или 403
-    protected_endpoints = ["/api/users/me", "/api/media/saved-songs", "/api/chat/history", "/api/recommend"]
+    protected_endpoints = ["/users/me", "/media/saved-songs", "/chat/history", "/recommend"]
     
     for endpoint in protected_endpoints:
         status = results.get(endpoint)
@@ -84,7 +84,7 @@ def main():
     
     if success:
         print("🎉 Все эндпоинты работают правильно!")
-        print("✅ Проблема с /api/users/me должна быть решена")
+        print("✅ Проблема с API должна быть решена")
     else:
         print("❌ Есть проблемы с эндпоинтами")
         print("🔧 Проверьте конфигурацию сервера и миграции")

@@ -48,12 +48,12 @@ app.add_middleware(
 async def health_check():
     return JSONResponse(content={"status": "ok", "message": "VibeMatch API is running"})
 
-# Подключаем роуты с префиксом /api
-app.include_router(auth.router, prefix="/api/auth")
-app.include_router(media.router, prefix="/api/media")
-app.include_router(recommend.router, prefix="/api/recommend")
-app.include_router(chat.router, prefix="/api/chat")
-app.include_router(users.router, prefix="/api/users")
+# Подключаем роуты
+app.include_router(auth.router, prefix="/auth")
+app.include_router(media.router, prefix="/media")
+app.include_router(recommend.router, prefix="/recommend")
+app.include_router(chat.router, prefix="/chat")
+app.include_router(users.router, prefix="/users")
 
 if __name__ == "__main__":
     import uvicorn

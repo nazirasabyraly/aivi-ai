@@ -45,9 +45,9 @@ else:
 # Database
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# OAuth Configuration
-BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8001")
-# На продакшн сервере установите: BACKEND_BASE_URL=https://aivi-ai.it.com/api
+# OAuth Configuration (используется для Google OAuth, который сейчас отключен)
+BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8001/")
+# На продакшн сервере установите: BACKEND_BASE_URL=https://aivi-ai.it.com/
 
 # Clerk Configuration
 CLERK_PUBLIC_KEY = os.getenv("CLERK_PUBLIC_KEY")

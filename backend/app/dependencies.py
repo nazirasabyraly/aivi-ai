@@ -36,27 +36,42 @@ def get_current_user(
                 clerk_id = user_info.get("clerk_id")
                 
                 if clerk_id:
-                    # Ищем пользователя по Clerk ID
-                    user = auth_service.get_user_by_clerk_id(db, clerk_id)
-                    
-                    if user:
-                        print(f"✅ Found existing Clerk user: {user.email}")
-                        return user
+                    # Безопасно ищем пользователя по Clerk ID
+                    try:
+                        user = auth_service.get_user_by_clerk_id(db, clerk_id)
+                        
+                        if user:
+                            print(f"✅ Found existing Clerk user: {user.email}")
+                            return user
+                    except Exception as db_error:
+                        print(f"⚠️  Database error (missing clerk_id column?): {db_error}")
+                        # Если колонка clerk_id не существует, попробуем найти по email
+                        email = user_info.get("email")
+                        if email:
+                            user = auth_service.get_user_by_email(db, email)
+                            if user:
+                                print(f"✅ Found user by email (fallback): {user.email}")
+                                return user
                     
                     # Если пользователь не найден, создаем его автоматически
                     if user_info.get("email"):
                         print(f"📝 Creating new Clerk user: {user_info['email']}")
-                        user = auth_service.create_or_update_clerk_user(
-                            db=db,
-                            clerk_id=clerk_id,
-                            email=user_info["email"],
-                            name=user_info.get("name"),
-                            username=user_info.get("username"),
-                            avatar_url=user_info.get("picture"),
-                            email_verified=user_info.get("email_verified", False)
-                        )
-                        print(f"✅ Created Clerk user in DB: {user.email} (ID: {user.id})")
-                        return user
+                        try:
+                            user = auth_service.create_or_update_clerk_user(
+                                db=db,
+                                clerk_id=clerk_id,
+                                email=user_info["email"],
+                                name=user_info.get("name"),
+                                username=user_info.get("username"),
+                                avatar_url=user_info.get("picture"),
+                                email_verified=user_info.get("email_verified", False)
+                            )
+                            print(f"✅ Created Clerk user in DB: {user.email} (ID: {user.id})")
+                            return user
+                        except Exception as create_error:
+                            print(f"❌ Failed to create Clerk user: {create_error}")
+                            # Если не можем создать, возвращаем 401
+                            pass
         except HTTPException as e:
             # Clerk токен невалидный, продолжаем
             print(f"❌ Clerk token verification failed: {e}")

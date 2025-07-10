@@ -27,7 +27,7 @@ def test_daily_limits():
     
     try:
         # Проверяем текущие лимиты
-        response = requests.get(f"{API_BASE_URL}/api/users/me", headers=headers)
+        response = requests.get(f"{API_BASE_URL}/users/me", headers=headers)
         if response.status_code == 200:
             user_data = response.json()
             print(f"✅ Пользователь: {user_data.get('username')}")
@@ -56,7 +56,7 @@ def test_user_favorites():
     
     try:
         # Получаем избранные песни
-        response = requests.get(f"{API_BASE_URL}/api/media/saved-songs", headers=headers)
+        response = requests.get(f"{API_BASE_URL}/media/saved-songs", headers=headers)
         if response.status_code == 200:
             saved_songs = response.json()
             print(f"✅ Найдено избранных песен: {len(saved_songs)}")
@@ -151,7 +151,7 @@ def main():
     
     # Проверяем доступность API
     try:
-        response = requests.get(f"{API_BASE_URL}/api/auth/ngrok-url")
+        response = requests.get(f"{API_BASE_URL}/auth/ngrok-url")
         if response.status_code == 200:
             print("✅ API доступен")
         else:
