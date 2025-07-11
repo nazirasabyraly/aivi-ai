@@ -186,8 +186,6 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({ videoId, sr
         <div className="audio-player-container" style={style}>
             <audio ref={audioRef} preload="metadata"></audio>
             
-            {error && <div style={{ color: 'red', marginBottom: '10px' }}>{error}</div>}
-            
             {/* Track Info */}
             <div style={{ 
                 display: 'flex',
@@ -231,6 +229,31 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({ videoId, sr
                 </div>
             </div>
 
+            {/* Error Message or Status */}
+            {error && (
+                <div style={{ 
+                    background: 'rgba(255, 193, 7, 0.2)',
+                    color: '#fff',
+                    padding: '12px',
+                    borderRadius: '8px',
+                    marginBottom: '16px',
+                    fontSize: '14px',
+                    textAlign: 'center',
+                    border: '1px solid rgba(255, 193, 7, 0.3)'
+                }}>
+                    {error.includes("temporarily unavailable") ? (
+                        <>
+                            <div style={{ marginBottom: '4px' }}>⚠️ Аудио временно недоступно</div>
+                            <div style={{ fontSize: '12px', opacity: 0.8 }}>
+                                YouTube ограничил доступ. Мы работаем над решением.
+                            </div>
+                        </>
+                    ) : (
+                        error
+                    )}
+                </div>
+            )}
+
             {/* Controls */}
             <div style={{ 
                 display: 'flex',
@@ -246,25 +269,30 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({ videoId, sr
                         height: '48px',
                         borderRadius: '50%',
                         border: 'none',
-                        background: 'rgba(255, 255, 255, 0.2)',
+                        background: error ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.2)',
                         color: 'white',
                         fontSize: '20px',
-                        cursor: 'pointer',
+                        cursor: error ? 'not-allowed' : 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         transition: 'all 0.2s ease',
-                        backdropFilter: 'blur(10px)'
+                        backdropFilter: 'blur(10px)',
+                        opacity: error ? 0.5 : 1
                     }}
                     onMouseEnter={(e) => {
-                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.3)';
-                        e.currentTarget.style.transform = 'scale(1.05)';
+                        if (!error) {
+                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.3)';
+                            e.currentTarget.style.transform = 'scale(1.05)';
+                        }
                     }}
                     onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
-                        e.currentTarget.style.transform = 'scale(1)';
+                        if (!error) {
+                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                            e.currentTarget.style.transform = 'scale(1)';
+                        }
                     }}
-                    disabled={isLoading}
+                    disabled={isLoading || !!error}
                 >
                     {isLoading ? (
                         <div style={{ 
@@ -275,7 +303,7 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({ videoId, sr
                             borderRadius: '50%',
                             animation: 'spin 1s linear infinite'
                         }} />
-                    ) : isPlaying ? '⏸️' : '▶️'}
+                    ) : error ? '❌' : isPlaying ? '⏸️' : '▶️'}
                 </button>
 
                 {/* Time Display */}
@@ -283,7 +311,8 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({ videoId, sr
                     fontSize: '14px',
                     fontWeight: '500',
                     minWidth: '100px',
-                    textAlign: 'center'
+                    textAlign: 'center',
+                    opacity: error ? 0.5 : 1
                 }}>
                     {formatTime(currentTime)} / {formatTime(duration)}
                 </div>
@@ -292,7 +321,8 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({ videoId, sr
                 <div style={{ 
                     position: 'relative',
                     display: 'flex',
-                    alignItems: 'center'
+                    alignItems: 'center',
+                    opacity: error ? 0.5 : 1
                 }}>
                     <button
                         onClick={() => setIsMuted(!isMuted)}
@@ -301,17 +331,22 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({ videoId, sr
                             border: 'none',
                             color: 'white',
                             fontSize: '16px',
-                            cursor: 'pointer',
+                            cursor: error ? 'not-allowed' : 'pointer',
                             padding: '8px',
                             borderRadius: '8px',
                             transition: 'all 0.2s ease'
                         }}
                         onMouseEnter={(e) => {
-                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                            if (!error) {
+                                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                            }
                         }}
                         onMouseLeave={(e) => {
-                            e.currentTarget.style.background = 'none';
+                            if (!error) {
+                                e.currentTarget.style.background = 'none';
+                            }
                         }}
+                        disabled={!!error}
                     >
                         {isMuted ? '🔇' : '🔊'}
                     </button>
@@ -323,13 +358,15 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({ videoId, sr
                         step="0.1"
                         value={volume}
                         onChange={handleVolumeChange}
+                        disabled={!!error}
                         style={{
                             width: '80px',
                             height: '4px',
                             background: '#e5e7eb',
                             borderRadius: '2px',
                             outline: 'none',
-                            cursor: 'pointer'
+                            cursor: error ? 'not-allowed' : 'pointer',
+                            opacity: error ? 0.5 : 1
                         }}
                     />
                 </div>
@@ -338,23 +375,29 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({ videoId, sr
                 <button
                     onClick={handleDownload}
                     style={{
-                        background: 'rgba(255, 255, 255, 0.2)',
+                        background: error ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.2)',
                         border: 'none',
                         color: 'white',
                         fontSize: '16px',
-                        cursor: 'pointer',
+                        cursor: error ? 'not-allowed' : 'pointer',
                         padding: '8px',
                         borderRadius: '8px',
                         transition: 'all 0.2s ease',
-                        backdropFilter: 'blur(10px)'
+                        backdropFilter: 'blur(10px)',
+                        opacity: error ? 0.5 : 1
                     }}
                     onMouseEnter={(e) => {
-                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.3)';
+                        if (!error) {
+                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.3)';
+                        }
                     }}
                     onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                        if (!error) {
+                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                        }
                     }}
-                    title="Скачать музыку"
+                    title={error ? "Скачивание недоступно" : "Скачать музыку"}
+                    disabled={!!error}
                 >
                     📥
                 </button>
@@ -366,19 +409,20 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({ videoId, sr
                 height: '6px',
                 background: '#e5e7eb',
                 borderRadius: '3px',
-                cursor: 'pointer',
+                cursor: error ? 'not-allowed' : 'pointer',
                 position: 'relative',
-                overflow: 'hidden'
+                overflow: 'hidden',
+                opacity: error ? 0.5 : 1
             }}
-            onClick={handleSeek}
+            onClick={error ? undefined : handleSeek}
             >
                 <div style={{ 
                     height: '100%',
-                    background: 'linear-gradient(90deg, #60a5fa 0%, #3b82f6 100%)',
+                    background: error ? 'rgba(255, 255, 255, 0.3)' : 'linear-gradient(90deg, #60a5fa 0%, #3b82f6 100%)',
                     borderRadius: '3px',
                     width: `${duration ? (currentTime / duration) * 100 : 0}%`,
                     transition: 'width 0.1s ease',
-                    boxShadow: '0 0 10px rgba(59, 130, 246, 0.5)'
+                    boxShadow: error ? 'none' : '0 0 10px rgba(59, 130, 246, 0.5)'
                 }} />
                 
                 {/* Progress indicator */}
@@ -389,9 +433,9 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({ videoId, sr
                     transform: 'translate(-50%, -50%)',
                     width: '14px',
                     height: '14px',
-                    background: '#3b82f6',
+                    background: error ? 'rgba(255, 255, 255, 0.5)' : '#3b82f6',
                     borderRadius: '50%',
-                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+                    boxShadow: error ? 'none' : '0 2px 8px rgba(0, 0, 0, 0.3)',
                     transition: 'left 0.1s ease'
                 }} />
             </div>
