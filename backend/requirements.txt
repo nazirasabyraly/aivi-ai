@@ -19,6 +19,7 @@ pydub==0.25.1
 ffmpeg-python==0.2.0
 psycopg2-binary==2.9.9
 alembic==1.12.1
+aiohttp==3.12.14
 
 # Google OAuth dependencies
 google-auth==2.26.2
