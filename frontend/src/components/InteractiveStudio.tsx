@@ -130,24 +130,15 @@ const InteractiveStudio: React.FC<InteractiveStudioProps> = ({ onAnalysisComplet
   
   // Функция проверки лимита пользователя
   const checkUserLimit = async (): Promise<boolean> => {
-    // Проверяем авторизацию через Clerk или localStorage
-    let token = localStorage.getItem('auth_token');
-    
-    if (!token && user) {
-      // Если это Clerk пользователь, получаем токен
-      try {
-        token = await getToken();
-      } catch (error) {
-        console.error('Error getting Clerk token:', error);
-      }
-    }
-    
-    if (!token) {
-      setError('⚠️ Для анализа медиафайлов необходима авторизация. Нажмите "Выйти" в левом верхнем углу и войдите в систему.');
-      return false; // Блокируем неавторизованных пользователей
-    }
-
     try {
+      // Получаем токен из Clerk
+      const token = await getToken();
+      
+      if (!token) {
+        setError('⚠️ Для анализа медиафайлов необходима авторизация. Нажмите "Выйти" в левом верхнем углу и войдите в систему.');
+        return false; // Блокируем неавторизованных пользователей
+      }
+
       const response = await fetch(`${API_BASE_URL}/users/me`, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -322,15 +313,8 @@ const InteractiveStudio: React.FC<InteractiveStudioProps> = ({ onAnalysisComplet
       formData.append('file', selectedFile);
       formData.append('language', i18n.language);
 
-      // Получаем токен (Clerk или localStorage)
-      let token = localStorage.getItem('auth_token');
-      if (!token && user) {
-        try {
-          token = await getToken();
-        } catch (error) {
-          console.error('Error getting Clerk token:', error);
-        }
-      }
+      // Получаем токен из Clerk
+      const token = await getToken();
       
       const response = await fetch(`${API_BASE_URL}/chat/analyze-media`, {
         method: 'POST',
@@ -377,15 +361,8 @@ const InteractiveStudio: React.FC<InteractiveStudioProps> = ({ onAnalysisComplet
     setActiveSection('recommendations');
 
     try {
-      // Получаем токен (Clerk или localStorage)
-      let token = localStorage.getItem('auth_token');
-      if (!token && user) {
-        try {
-          token = await getToken();
-        } catch (error) {
-          console.error('Error getting Clerk token:', error);
-        }
-      }
+      // Получаем токен из Clerk
+      const token = await getToken();
       
       if (!token) {
         throw new Error('Authentication required');
@@ -671,14 +648,14 @@ const InteractiveStudio: React.FC<InteractiveStudioProps> = ({ onAnalysisComplet
   };
 
   const handleLike = async (track: string, artist: string) => {
-    // Получаем токен из Clerk, а не из localStorage
-    const token = await getToken(); 
-    if (!token) {
-      setError('Требуется авторизация');
-      return;
-    }
-
     try {
+      // Получаем токен из Clerk, а не из localStorage
+      const token = await getToken(); 
+      if (!token) {
+        setError('Требуется авторизация');
+        return;
+      }
+
       // Получаем ID видео из кеша, чтобы сохранить его
       const videoId = youtubeCache[`${track}-${artist}`] || `search:${track}-${artist}`;
 
@@ -696,12 +673,10 @@ const InteractiveStudio: React.FC<InteractiveStudioProps> = ({ onAnalysisComplet
       });
 
       if (response.ok) {
-        // setLiked(prev => ({ ...prev, [`${track}-${artist}`]: true }));
         setSuccess('Добавлено в избранное!');
         onLikeUpdate(); // <-- Вызываем колбэк для обновления
       } else if (response.status === 409) {
         // Песня уже сохранена
-        // setLiked(prev => ({ ...prev, [`${track}-${artist}`]: true }));
         setError('Эта песня уже сохранена в избранном');
         onLikeUpdate(); // <-- И здесь тоже на всякий случай
       } else {
@@ -709,6 +684,7 @@ const InteractiveStudio: React.FC<InteractiveStudioProps> = ({ onAnalysisComplet
         setError(errorData.detail || 'Не удалось добавить в избранное');
       }
     } catch (error) {
+      console.error('Error in handleLike:', error);
       setError('Ошибка при добавлении в избранное');
     }
   };
