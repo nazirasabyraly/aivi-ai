@@ -19,20 +19,16 @@ from ..services.auth_service import AuthService
 
 log = logging.getLogger(__name__)
 
-# +++ КОНФИГУРАЦИЯ ПРОКСИ +++
-class ProxyConfig(BaseModel):
-    username: str = ""
-    password: str = ""
-    host: str = "95.56.238.194"
-    port: int = 0
+# Простая конфигурация прокси
+class WebshareProxyConfig:
+    def __init__(self, proxy_username: str, proxy_password: str):
+        self.proxy_username = proxy_username
+        self.proxy_password = proxy_password
 
-# ВАШИ ДАННЫЕ ОТ ПРОКСИ (если есть)
-proxy_config = ProxyConfig(
-    username="ujaoszjw", # ВАШ ЛОГИН
-    password="573z5xhtgbci", # ВАШ ПАРОЛЬ
-    port=80,      # ВАШ ПОРТ
+proxy_cfg = WebshareProxyConfig(
+    proxy_username="ujaoszjw",
+    proxy_password="573z5xhtgbci",
 )
-# ++++++++++++++++++++++++++++
 
 recommend_router = APIRouter()
 auth_service = AuthService()
@@ -84,12 +80,14 @@ def _download_video(video_url: str, video_id: str, proxy: str | None):
 def _download_with_retries(video_url: str, video_id: str):
     """Сначала быстрая попытка с прокси, если не удалась - напрямую."""
     proxy_url = None
-    if proxy_config.username and proxy_config.password and proxy_config.port > 0:
-        # --- ДОБАВЛЯЕМ ГЕНЕРАЦИЮ УНИКАЛЬНОЙ СЕССИИ ---
+    
+    # Используем WebshareProxyConfig вместо старой конфигурации
+    if proxy_cfg.proxy_username and proxy_cfg.proxy_password:
+        # Генерируем уникальную сессию для ротации IP
         session_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
-        proxy_username = f"{proxy_config.username}-session-{session_id}"
-        proxy_url = f"http://{proxy_username}:{proxy_config.password}@{proxy_config.host}:{proxy_config.port}"
-        # ---------------------------------------------
+        proxy_username = f"{proxy_cfg.proxy_username}-session-{session_id}"
+        # WebshareProxyConfig использует стандартные настройки: host и port
+        proxy_url = f"http://{proxy_username}:{proxy_cfg.proxy_password}@95.56.238.194:80"
 
     # Попытка 1: С прокси (если настроен)
     if proxy_url:
@@ -108,6 +106,7 @@ def _download_with_retries(video_url: str, video_id: str):
         log.error(f"❌ Direct download also failed for {video_id}. Giving up. Error: {e}")
         # Если и прямое соединение не удалось - тогда уже возвращаем ошибку
         raise e
+
 
 @recommend_router.get("/youtube-audio")
 async def get_youtube_audio(video_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
