@@ -144,28 +144,24 @@ def _download_youtube_audio(video_id: str) -> str:
 
 @recommend_router.get("/youtube-audio")
 async def get_youtube_audio(video_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Скачивает и отдает аудио с YouTube."""
-    if not shutil.which('ffmpeg'):
-        log.error("❌ FFMPEG NOT FOUND.")
-        raise HTTPException(status_code=503, detail="Server is not configured for audio processing.")
-
-    try:
-        audio_path = _download_youtube_audio(video_id)
-        
-        if not os.path.exists(audio_path):
-            raise HTTPException(status_code=500, detail="Audio file not found after download.")
-
-        def iterfile():
-            with open(audio_path, mode="rb") as file_like:
-                yield from file_like
-
-        return StreamingResponse(iterfile(), media_type="audio/mp4")
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        log.error(f"❌ Critical error in get_youtube_audio: {e}")
-        raise HTTPException(status_code=500, detail="Failed to process audio request.")
+    """Временно отключено из-за блокировки YouTube."""
+    
+    # Проверяем кеш - может быть есть уже скачанные файлы
+    for ext in ['m4a', 'mp3', 'webm', 'mp4']:
+        cached_file = os.path.join(AUDIO_CACHE_DIR, f"{video_id}.{ext}")
+        if os.path.exists(cached_file):
+            log.info(f"✅ Found cached file: {cached_file}")
+            def iterfile():
+                with open(cached_file, mode="rb") as file_like:
+                    yield from file_like
+            return StreamingResponse(iterfile(), media_type="audio/mp4")
+    
+    # Если в кеше нет - возвращаем ошибку с понятным сообщением
+    log.warning(f"⚠️ Audio download temporarily disabled due to YouTube restrictions for video: {video_id}")
+    raise HTTPException(
+        status_code=503, 
+        detail="Audio download is temporarily unavailable due to YouTube restrictions. We're working on a solution."
+    )
 
 @recommend_router.get("/youtube-search")
 async def search_youtube(q: str, max_results: int = 5):

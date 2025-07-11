@@ -46,6 +46,13 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({ videoId, sr
                     }
                 });
 
+                if (response.status === 503) {
+                    // Специальная обработка для временного отключения
+                    setError("Audio playback temporarily unavailable due to YouTube restrictions");
+                    setIsLoading(false);
+                    return;
+                }
+
                 if (!response.ok) {
                     throw new Error(`Failed to load audio: ${response.status} ${response.statusText}`);
                 }
