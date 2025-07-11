@@ -221,24 +221,26 @@ async def _run_riffusion_generation(prompt: str, request_id: str):
             return
 
         # --- 1. Отправка запроса на генерацию ---
-        url = "https://api.riffusion.com/v1/generate"  # Updated API endpoint
+        url = "https://api.riffusion.com/api/music"  # Updated API endpoint
         headers = {
             "accept": "application/json",
             "x-api-key": RIFFUSION_API_KEY,
             "Content-Type": "application/json"
         }
         data = {
-            "prompt": prompt,
-            "seed": -1,  # Let the API choose a random seed
-            "denoising": 0.75,
-            "guidance": 7.0
+            "text": prompt,
+            "duration": 30,  # Duration in seconds
+            "model": "v2",
+            "output_format": "mp3",
+            "temperature": 0.7
         }
 
         print(f"🎵 [BG] Sending initial request to Riffusion API...")
         response = requests.post(url, headers=headers, json=data, timeout=30)
         print(f"🎵 [BG] Initial response status: {response.status_code}")
+        print(f"🎵 [BG] Initial response body: {response.text}")
         
-        if response.status_code != 200:
+        if response.status_code != 200 and response.status_code != 202:
             error_text = response.text
             print(f"❌ [BG] API Error: {error_text}")
             with open(os.path.join(AUDIO_CACHE_DIR, f"{request_id}.error"), "w") as f:
@@ -249,7 +251,7 @@ async def _run_riffusion_generation(prompt: str, request_id: str):
         print(f"🎵 [BG] Initial response: {initial_result}")
         
         # Get the task ID from the response
-        task_id = initial_result.get("id")
+        task_id = initial_result.get("task_id")
         if not task_id:
             print("❌ [BG] No task_id in response")
             with open(os.path.join(AUDIO_CACHE_DIR, f"{request_id}.error"), "w") as f:
@@ -257,7 +259,7 @@ async def _run_riffusion_generation(prompt: str, request_id: str):
             return
 
         # --- 2. Ожидание завершения генерации (Polling) ---
-        status_url = f"https://api.riffusion.com/v1/status/{task_id}"
+        status_url = f"https://api.riffusion.com/api/status/{task_id}"
         start_time = time.time()
         max_wait_time = 300  # 5 minutes timeout
         
@@ -276,13 +278,14 @@ async def _run_riffusion_generation(prompt: str, request_id: str):
             
             status_resp = requests.get(status_url, headers=headers, timeout=30)
             print(f"🎵 [BG] Status check response: {status_resp.status_code}")
+            print(f"🎵 [BG] Status check body: {status_resp.text}")
             
             if status_resp.status_code == 200:
                 status_result = status_resp.json()
                 print(f"🎵 [BG] Status result: {status_result}")
                 
                 if status_result.get("status") == "completed":
-                    audio_url = status_result.get("audio_url")
+                    audio_url = status_result.get("result", {}).get("audio_url")
                     if audio_url:
                         print(f"🎵 [BG] Audio URL received: {audio_url}")
                         # --- 3. Скачивание файла ---
@@ -314,8 +317,10 @@ async def _run_riffusion_generation(prompt: str, request_id: str):
                     error_msg = f"Generation failed: {status_result.get('error', 'Unknown error')}"
                     print(f"❌ [BG] {error_msg}")
                     raise Exception(error_msg)
+                elif status_result.get("status") == "processing":
+                    print(f"⏳ [BG] Still processing... Progress: {status_result.get('progress', 0)}%")
                 else:
-                    print(f"⏳ [BG] Generation status: {status_result.get('status', 'unknown')}")
+                    print(f"⏳ [BG] Status: {status_result.get('status', 'unknown')}")
         
         error_msg = "Generation timed out after 5 minutes"
         print(f"❌ [BG] {error_msg}")
@@ -380,28 +385,43 @@ async def check_generation_status(request: GenerateBeatStatusRequest):
     """
     Проверяет статус генерации музыки по наличию файла в кеше.
     """
-    request_id = request.request_id
-    if not request_id:
-        return JSONResponse(status_code=400, content={"success": False, "error": "request_id не указан"})
-    
-    # Проверяем файл с ошибкой
-    error_file = os.path.join(AUDIO_CACHE_DIR, f"{request_id}.error")
-    if os.path.exists(error_file):
-        with open(error_file, "r") as f:
-            error_msg = f.read()
-        return JSONResponse(status_code=500, content={"success": False, "status": "failed", "error": error_msg})
-    
-    # Проверяем готовый mp3 файл
-    success_file = os.path.join(AUDIO_CACHE_DIR, f"{request_id}.mp3")
-    if os.path.exists(success_file):
-        return JSONResponse(content={
-            "success": True, 
-            "status": "complete",
-            "local_audio_url": f"/audio_cache/{request_id}.mp3"
-        })
-    
-    # Если файлов нет, значит, еще в процессе
-    return JSONResponse(content={"success": True, "status": "pending"})
+    try:
+        request_id = request.request_id
+        if not request_id:
+            return JSONResponse(status_code=400, content={"success": False, "error": "request_id не указан"})
+        
+        # Проверяем файл с ошибкой
+        error_file = os.path.join(AUDIO_CACHE_DIR, f"{request_id}.error")
+        if os.path.exists(error_file):
+            with open(error_file, "r") as f:
+                error_msg = f.read()
+            return JSONResponse(content={"success": False, "status": "failed", "error": error_msg})
+        
+        # Проверяем готовый mp3 файл
+        success_file = os.path.join(AUDIO_CACHE_DIR, f"{request_id}.mp3")
+        if os.path.exists(success_file):
+            return JSONResponse(content={
+                "success": True, 
+                "status": "complete",
+                "local_audio_url": f"/audio_cache/{request_id}.mp3"
+            })
+        
+        # Проверяем файл статуса
+        status_file = os.path.join(AUDIO_CACHE_DIR, f"{request_id}.status")
+        if os.path.exists(status_file):
+            with open(status_file, "r") as f:
+                status_data = json.loads(f.read())
+            return JSONResponse(content={"success": True, **status_data})
+        
+        # Если нет ни одного файла статуса
+        return JSONResponse(content={"success": True, "status": "pending", "progress": 0})
+        
+    except Exception as e:
+        print(f"❌ Error checking status: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "status": "error", "error": str(e)}
+        )
 
 @router.get("/download-beat/{filename}")
 async def download_beat(filename: str):
