@@ -117,6 +117,15 @@ const resources = {
       'dashboard_search': 'Поиск',
       'dashboard_favorites': 'Избранное',
       
+      // Search Page
+      'search_title': 'Поиск музыки',
+      'search_subtitle': 'Найдите любую песню или исполнителя на YouTube',
+      'search_placeholder': 'Введите название песни или исполнителя...',
+      'search_button': 'Найти',
+      'search_loading': 'Поиск...',
+      'search_no_results_title': 'Ничего не найдено',
+      'search_no_results_subtitle': 'Попробуйте изменить ваш поисковый запрос.',
+
       // Profile
       'basic_account': 'Обычный',
       'unlimited': 'Безлимитно',
@@ -287,7 +296,16 @@ const resources = {
       'dashboard_studio': 'Studio',
       'dashboard_search': 'Search',
       'dashboard_favorites': 'Favorites',
-      
+
+      // Search Page
+      'search_title': 'Music Search',
+      'search_subtitle': 'Find any song or artist on YouTube',
+      'search_placeholder': 'Enter a song title or artist...',
+      'search_button': 'Search',
+      'search_loading': 'Searching...',
+      'search_no_results_title': 'Nothing Found',
+      'search_no_results_subtitle': 'Try changing your search query.',
+
       // Profile
       'basic_account': 'Basic',
       'unlimited': 'Unlimited',
@@ -459,6 +477,15 @@ const resources = {
       'dashboard_search': 'Іздеу',
       'dashboard_favorites': 'Таңдаулылар',
       
+      // Search Page
+      'search_title': 'Сіздің AI музыка көмекшісі',
+      'search_subtitle': 'Фото немесе видео жүктеңіз, біздің AI сіздің көңіл-күйіңіз бен сәттің атмосферасына сәйкес келетін жеке музыкалық тізімді жасайды',
+      'search_placeholder': 'Көңіл-күйіңізді көрсететін фото немесе видео жіберіңіз',
+      'search_button': 'Тегін сынап көріңіз',
+      'search_loading': 'Тегін сынап көріңіз',
+      'search_no_results_title': 'Ничего не найдено',
+      'search_no_results_subtitle': 'Попробуйте изменить ваш поисковый запрос.',
+
       // Profile
       'basic_account': 'Қарапайым',
       'unlimited': 'Шексіз',

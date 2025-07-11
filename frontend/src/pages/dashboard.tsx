@@ -1,51 +1,134 @@
-import React, { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { API_BASE_URL } from '../config'
-import InteractiveStudio from '../components/InteractiveStudio'
-import { useTranslation } from 'react-i18next'
-import Recommendations from '../components/Recommendations'
-import Favorites from '../components/Favorites'
-import Profile from './profile'
-import { useUser, useClerk } from '@clerk/clerk-react'
+import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
+import { useUser, useClerk, useAuth } from '@clerk/clerk-react';
+import InteractiveStudio from '../components/InteractiveStudio';
+import Favorites from '../components/Favorites';
+import Profile from './profile';
+import SearchPage from './SearchPage'; // Импортируем страницу поиска
+import { API_BASE_URL } from '../config';
+import { toast } from 'react-toastify';
+
+interface Track {
+  video_id: string;
+  title: string;
+  artist: string;
+  description?: string;
+}
 
 const Dashboard = () => {
-  const navigate = useNavigate()
-  const { t } = useTranslation()
-  const { user, isLoaded } = useUser() // Clerk user
-  const { signOut } = useClerk() // Clerk logout
-  const [userProfile, setUserProfile] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'studio' | 'recommendations' | 'favorites' | 'profile'>('studio')
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const { user, isLoaded } = useUser();
+  const { signOut } = useClerk();
+  const { getToken } = useAuth();
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'studio' | 'favorites' | 'profile' | 'search'>('studio');
+  const [likedSongs, setLikedSongs] = useState<Set<string>>(new Set());
+  const [language, setLanguage] = useState('ru');
+
+  const fetchLikedSongs = async () => {
+    try {
+      const token = await getToken();
+      if (!token) return;
+      const response = await fetch(`${API_BASE_URL}/media/saved-songs`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const songs = await response.json();
+        setLikedSongs(new Set(songs.map((s: any) => s.youtube_video_id)));
+      }
+    } catch (error) {
+      console.error("Failed to fetch liked songs:", error);
+    }
+  };
+
+  const handleLikeUpdate = () => {
+    fetchLikedSongs();
+  };
+
+  const fetchUserProfile = async () => {
+    // Не сбрасываем состояние при повторных вызовах, 
+    // чтобы избежать моргания UI
+    
+    try {
+      const token = await getToken();
+      if (!token) {
+        throw new Error("Authentication token not found. Please log in again.");
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        controller.abort();
+        console.error("Request timed out");
+      }, 15000); // 15 секунд
+
+      const response = await fetch(`${API_BASE_URL}/users/me`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Failed to fetch user profile. Status: ${response.status}`, errorText);
+        throw new Error(`Server error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      setUserProfile(data);
+      setError(null); // Сбрасываем ошибку при успехе
+
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        setError("The server took too long to respond. Please check your connection and try again.");
+      } else {
+        setError(err.message);
+      }
+      // Оставим setLoading(false) в finally, чтобы он всегда выполнялся
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    // Ждем пока Clerk загрузится
-    if (!isLoaded) {
-      setLoading(true)
-      return
+    if (user && isLoaded) {
+      fetchUserProfile();
+      fetchLikedSongs();
+    } else if (!user && isLoaded) {
+      navigate('/login');
     }
+  }, [user, isLoaded, navigate]);
 
-    // Проверяем авторизацию: либо Clerk пользователь, либо старый auth_token
-    const authToken = localStorage.getItem('auth_token')
-    if (!user && !authToken) {
-      navigate('/login')
-      return
-    }
-    
-    setLoading(false)
-  }, [user, isLoaded, navigate])
+  const handleAnalysisComplete = (analysis: any) => {
+    // setActiveTab('recommendations'); // Removed as per edit
+    // getRecommendations(analysis); // Removed as per edit
+  };
+
+  // Removed getRecommendations function as per edit
 
   const handleLogout = async () => {
-    // Выходим из Clerk если пользователь авторизован через Clerk
     if (user) {
-      await signOut()
+      await signOut();
     }
-    
-    // Очищаем старые токены
-    localStorage.removeItem('auth_token')
-    localStorage.removeItem('user_info')
-    
-    navigate('/login')
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user_info');
+    navigate('/login');
+  };
+
+  if (error) {
+    return (
+      <div style={{ textAlign: 'center', padding: '2rem' }}>
+        <h2>Error</h2>
+        <p>{error}</p>
+        <button onClick={() => fetchUserProfile()}>Try again</button>
+      </div>
+    );
   }
 
   if (loading) {
@@ -114,11 +197,11 @@ const Dashboard = () => {
             🎵 {t('dashboard_studio')}
           </button>
           <button
-            onClick={() => setActiveTab('recommendations')}
+            onClick={() => setActiveTab('search')}
             style={{
               padding: '12px 24px',
-              background: activeTab === 'recommendations' ? 'rgba(255, 255, 255, 0.9)' : 'transparent',
-              color: activeTab === 'recommendations' ? '#333' : 'white',
+              background: activeTab === 'search' ? 'rgba(255, 255, 255, 0.9)' : 'transparent',
+              color: activeTab === 'search' ? '#333' : 'white',
               border: 'none',
               borderRadius: '12px',
               cursor: 'pointer',
@@ -128,8 +211,9 @@ const Dashboard = () => {
               minWidth: '140px'
             }}
           >
-            🔍 {t('dashboard_search')}
+            🔍 {t('dashboard_search') || 'Поиск'}
           </button>
+          {/* Removed recommendations button as per edit */}
           <button
             onClick={() => setActiveTab('favorites')}
             style={{
@@ -167,36 +251,15 @@ const Dashboard = () => {
         </div>
       </div>
       
-      <div style={{ minHeight: 'calc(100vh - 100px)' }}>
-        {activeTab === 'studio' && <InteractiveStudio />}
-        {activeTab === 'recommendations' && (
-          <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
-            <div style={{ 
-              background: 'white', 
-              borderRadius: '20px', 
-              padding: '2rem',
-              boxShadow: '0 10px 30px rgba(0, 0, 0, 0.1)'
-            }}>
-              <Recommendations />
-            </div>
-          </div>
-        )}
-        {activeTab === 'favorites' && (
-          <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
-            <div style={{ 
-              background: 'white', 
-              borderRadius: '20px', 
-              padding: '2rem',
-              boxShadow: '0 10px 30px rgba(0, 0, 0, 0.1)'
-            }}>
-              <Favorites />
-            </div>
-          </div>
-        )}
+      <main style={{ padding: '20px', maxWidth: '1400px', margin: '0 auto' }}>
+        {activeTab === 'studio' && <InteractiveStudio onAnalysisComplete={handleAnalysisComplete} onLikeUpdate={handleLikeUpdate} likedSongs={likedSongs} />}
+        {activeTab === 'search' && <SearchPage />}
+        {activeTab === 'favorites' && <Favorites onLikeUpdate={handleLikeUpdate} />}
         {activeTab === 'profile' && <Profile />}
-      </div>
-    </div>
-  )
-}
+      </main>
 
-export default Dashboard 
+    </div>
+  );
+};
+
+export default Dashboard; 

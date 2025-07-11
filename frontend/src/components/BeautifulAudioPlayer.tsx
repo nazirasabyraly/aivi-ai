@@ -1,73 +1,139 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FaPlay, FaPause, FaVolumeUp, FaVolumeMute } from 'react-icons/fa';
 import { API_BASE_URL } from '../config';
+import { useAuth } from '@clerk/clerk-react';
 
 interface BeautifulAudioPlayerProps {
-    videoId: string;
+    videoId?: string; // Сделаем videoId необязательным
+    src?: string; // Добавим прямой URL
     title: string;
     artist: string;
     style?: React.CSSProperties;
+    onAudioPlay?: () => void;
+    onAudioPause?: () => void;
+    authToken?: string; // Добавляем проп для токена
 }
 
-const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({ videoId, title, artist, style }) => {
-    const src = `${API_BASE_URL}/recommend/youtube-audio?video_id=${videoId}`;
-    
+const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({ videoId, src, title, artist, style, onAudioPlay, onAudioPause, authToken }) => {
+    const { getToken } = useAuth();
     const [isPlaying, setIsPlaying] = useState(false);
     const [duration, setDuration] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
     const [volume, setVolume] = useState(0.8);
     const [isMuted, setIsMuted] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
     const audioRef = useRef<HTMLAudioElement>(null);
+    const audioUrl = useRef<string | null>(null);
+
+    useEffect(() => {
+        const fetchAndSetAudio = async () => {
+            if (!videoId) return; // Выходим, если это не YouTube трек
+
+            setIsLoading(true);
+            setError(null);
+
+            try {
+                // Используем переданный токен, если он есть, иначе получаем новый
+                const token = authToken || await getToken();
+                if (!token) {
+                    throw new Error("Authentication token not available.");
+                }
+
+                const response = await fetch(`${API_BASE_URL}/recommend/youtube-audio?video_id=${videoId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Failed to load audio: ${response.status} ${response.statusText}`);
+                }
+
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                audioUrl.current = url;
+
+                if (audioRef.current) {
+                    audioRef.current.src = url;
+                }
+            } catch (err) {
+                const errorMessage = err instanceof Error ? err.message : "An unknown error occurred.";
+                console.error("Error loading audio:", errorMessage);
+                setError(errorMessage);
+                setIsLoading(false);
+            }
+        };
+
+        if (videoId) {
+            fetchAndSetAudio();
+        } else if (src && audioRef.current) {
+            audioRef.current.src = src;
+            setIsLoading(false);
+        }
+
+        return () => {
+            if (audioUrl.current) {
+                URL.revokeObjectURL(audioUrl.current);
+            }
+        };
+    }, [videoId, src, getToken, authToken]);
 
     useEffect(() => {
         const audio = audioRef.current;
-        if (audio) {
-            const setAudioData = () => {
-                setDuration(audio.duration);
-                setCurrentTime(audio.currentTime);
-            };
+        if (!audio) return;
 
-            const setAudioTime = () => setCurrentTime(audio.currentTime);
+        // Применяем громкость и Mute при их изменении
+        audio.volume = volume;
+        audio.muted = isMuted;
 
-            const handleCanPlay = () => {
-                setIsLoading(false);
-            };
+        const setAudioData = () => {
+            setDuration(audio.duration);
+            setCurrentTime(audio.currentTime);
+            setIsLoading(false);
+        };
 
-            const handleError = () => {
-                setIsLoading(false);
-                console.error("Error loading audio");
-            };
+        const setAudioTime = () => setCurrentTime(audio.currentTime);
+        const handleCanPlay = () => setIsLoading(false);
+        const handlePlay = () => setIsPlaying(true);
+        const handlePause = () => setIsPlaying(false);
+        
+        const handleError = () => {
+            setError("Error playing audio.");
+            setIsLoading(false);
+        };
 
-            audio.addEventListener('loadeddata', setAudioData);
-            audio.addEventListener('timeupdate', setAudioTime);
-            audio.addEventListener('canplay', handleCanPlay);
-            audio.addEventListener('error', handleError);
+        audio.addEventListener('loadeddata', setAudioData);
+        audio.addEventListener('timeupdate', setAudioTime);
+        audio.addEventListener('canplay', handleCanPlay);
+        audio.addEventListener('play', handlePlay);
+        audio.addEventListener('pause', handlePause);
+        audio.addEventListener('error', handleError);
 
-            if (audio.readyState >= 2) {
-                handleCanPlay();
-            }
-
-            return () => {
-                audio.removeEventListener('loadeddata', setAudioData);
-                audio.removeEventListener('timeupdate', setAudioTime);
-                audio.removeEventListener('canplay', handleCanPlay);
-                audio.removeEventListener('error', handleError);
-            };
-        }
-    }, [src]);
+        return () => {
+            audio.removeEventListener('loadeddata', setAudioData);
+            audio.removeEventListener('timeupdate', setAudioTime);
+            audio.removeEventListener('canplay', handleCanPlay);
+            audio.removeEventListener('play', handlePlay);
+            audio.removeEventListener('pause', handlePause);
+            audio.removeEventListener('error', handleError);
+        };
+    }, [isMuted, volume]); // Добавляем isMuted и volume в зависимости
 
     const togglePlayPause = () => {
-        if (isLoading) return;
+        if (isLoading || error) return;
         const audio = audioRef.current;
         if (audio) {
             if (isPlaying) {
                 audio.pause();
+                if (onAudioPause) onAudioPause();
             } else {
-                audio.play();
+                audio.play().catch(e => {
+                    setError("Playback failed.");
+                    console.error("Playback error:", e);
+                });
+                if (onAudioPlay) onAudioPlay();
             }
-            setIsPlaying(!isPlaying);
         }
     };
 
@@ -89,6 +155,7 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({ videoId, ti
         const newVolume = parseFloat(e.target.value);
         audio.volume = newVolume;
         setVolume(newVolume);
+        setIsMuted(false); // Выключаем mute при ручной регулировке
     };
 
     const formatTime = (time: number) => {
@@ -97,18 +164,12 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({ videoId, ti
         return `${minutes}:${seconds.toString().padStart(2, '0')}`;
     };
 
-    const handleDownload = () => {
-        // Извлекаем имя файла из URL
-        const urlParts = src.split('/');
-        const filename = urlParts[urlParts.length - 1];
+    const handleDownload = async () => {
+        if (error || !audioUrl.current) return;
         
-        // Создаем ссылку для скачивания
-        const downloadUrl = src.replace('/audio_cache/', '/chat/download-beat/');
-        
-        // Создаем временную ссылку и кликаем по ней
         const link = document.createElement('a');
-        link.href = downloadUrl;
-        link.download = `aivi_generated_music_${filename}`;
+        link.href = audioUrl.current;
+        link.download = `${artist} - ${title}.m4a`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -116,7 +177,9 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({ videoId, ti
 
     return (
         <div className="audio-player-container" style={style}>
-            <audio ref={audioRef} src={src} preload="metadata"></audio>
+            <audio ref={audioRef} preload="metadata"></audio>
+            
+            {error && <div style={{ color: 'red', marginBottom: '10px' }}>{error}</div>}
             
             {/* Track Info */}
             <div style={{ 
@@ -256,7 +319,7 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({ videoId, ti
                         style={{
                             width: '80px',
                             height: '4px',
-                            background: 'rgba(255, 255, 255, 0.3)',
+                            background: '#e5e7eb',
                             borderRadius: '2px',
                             outline: 'none',
                             cursor: 'pointer'
@@ -286,7 +349,7 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({ videoId, ti
                     }}
                     title="Скачать музыку"
                 >
-                    ��
+                    📥
                 </button>
             </div>
 
@@ -294,7 +357,7 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({ videoId, ti
             <div style={{ 
                 width: '100%',
                 height: '6px',
-                background: 'rgba(255, 255, 255, 0.2)',
+                background: '#e5e7eb',
                 borderRadius: '3px',
                 cursor: 'pointer',
                 position: 'relative',
@@ -304,11 +367,11 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({ videoId, ti
             >
                 <div style={{ 
                     height: '100%',
-                    background: 'linear-gradient(90deg, #ffffff 0%, #f0f0f0 100%)',
+                    background: 'linear-gradient(90deg, #60a5fa 0%, #3b82f6 100%)',
                     borderRadius: '3px',
                     width: `${duration ? (currentTime / duration) * 100 : 0}%`,
                     transition: 'width 0.1s ease',
-                    boxShadow: '0 0 10px rgba(255, 255, 255, 0.5)'
+                    boxShadow: '0 0 10px rgba(59, 130, 246, 0.5)'
                 }} />
                 
                 {/* Progress indicator */}
@@ -319,7 +382,7 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({ videoId, ti
                     transform: 'translate(-50%, -50%)',
                     width: '14px',
                     height: '14px',
-                    background: 'white',
+                    background: '#3b82f6',
                     borderRadius: '50%',
                     boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
                     transition: 'left 0.1s ease'
@@ -343,7 +406,7 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({ videoId, ti
                         appearance: none;
                         width: 16px;
                         height: 16px;
-                        background: white;
+                        background: #3b82f6;
                         border-radius: 50%;
                         cursor: pointer;
                         box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
@@ -352,7 +415,7 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({ videoId, ti
                     input[type="range"]::-moz-range-thumb {
                         width: 16px;
                         height: 16px;
-                        background: white;
+                        background: #3b82f6;
                         border-radius: 50%;
                         cursor: pointer;
                         border: none;

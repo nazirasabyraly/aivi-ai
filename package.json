@@ -4,6 +4,8 @@
   "description": "VibeMatch — современное веб-приложение для анализа медиа и музыкальных рекомендаций на основе AI и YouTube.",
   "main": "index.js",
   "scripts": {
+    "install:frontend": "cd frontend && npm install",
+    "build:frontend": "cd frontend && npm run build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {

@@ -12,7 +12,11 @@ interface SavedSong {
   date_saved: string;
 }
 
-const Favorites: React.FC = () => {
+interface FavoritesProps {
+  onLikeUpdate: () => void;
+}
+
+const Favorites: React.FC<FavoritesProps> = ({ onLikeUpdate }) => {
   const { t } = useTranslation();
   const { user, isLoaded } = useUser(); // Clerk user
   const { getToken } = useAuth(); // Clerk token
@@ -21,6 +25,7 @@ const Favorites: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [authToken, setAuthToken] = useState<string | undefined>(undefined);
 
   const fetchSongs = async () => {
     setLoading(true);
@@ -33,20 +38,11 @@ const Favorites: React.FC = () => {
       return;
     }
     
-    // Проверяем авторизацию: Clerk пользователь или старый токен
-    const token = localStorage.getItem('auth_token');
-    if (!user && !token) {
-      setError(t('favorites_login_required') || 'Войдите в систему, чтобы посмотреть избранное');
-      setLoading(false);
-      return;
-    }
+    try {
+      const token = await getToken();
+      setAuthToken(token ?? undefined); // Сохраняем токен
 
-    // Для Clerk пользователей получаем токен и делаем запрос к API
-    if (user) {
-      try {
-        // Получаем токен Clerk для авторизации на backend
-        const token = await getToken();
-        
+      if (token) {
         const resp = await fetch(`${API_BASE_URL}/media/saved-songs`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -57,62 +53,36 @@ const Favorites: React.FC = () => {
         } else {
           setError('Ошибка загрузки избранного');
         }
-      } catch (error) {
-        console.error('Error fetching Clerk user songs:', error);
-        setError('Ошибка сети');
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
-    
-    try {
-      const resp = await fetch(`${API_BASE_URL}/media/saved-songs`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (resp.ok) {
-        const data = await resp.json();
-        setSongs(data);
       } else {
-        setError(t('favorites_load_failed') || 'Ошибка загрузки избранного');
+         setError(t('favorites_login_required') || 'Войдите в систему, чтобы посмотреть избранное');
       }
-    } catch {
-      setError(t('favorites_load_error') || 'Ошибка сети');
+    } catch (error) {
+      console.error('Error fetching songs:', error);
+      setError('Ошибка сети');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchSongs();
-  }, [user, isLoaded, getToken, t]);
+    if (isLoaded) { // Запускаем только когда Clerk готов
+      fetchSongs();
+    }
+  }, [isLoaded, getToken, t]);
 
   const handleDelete = async (youtube_video_id: string) => {
-    let token: string | null = null;
-    
-    // Получаем токен в зависимости от типа пользователя
-    if (user) {
-      try {
-        token = await getToken();
-      } catch (error) {
-        console.error('Error getting Clerk token:', error);
-        return;
-      }
-    } else {
-      token = localStorage.getItem('auth_token');
-    }
-    
-    if (!token) return;
+    if (!authToken) return;
     
     setDeletingId(youtube_video_id);
     try {
       const resp = await fetch(`${API_BASE_URL}/media/saved-songs/${youtube_video_id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { 'Authorization': `Bearer ${authToken}` }
       });
       if (resp.ok) {
         setSongs(songs => songs.filter(s => s.youtube_video_id !== youtube_video_id));
         setSuccess(t('favorites_deleted'));
+        onLikeUpdate(); // <-- Вызываем колбэк для обновления
       } else {
         setError(t('favorites_delete_failed'));
       }
@@ -167,10 +137,10 @@ const Favorites: React.FC = () => {
       <div style={{ 
         textAlign: 'center', 
         padding: '4rem 2rem',
-        color: '#666'
+        color: 'rgba(255, 255, 255, 0.8)' // Light color for text
       }}>
         <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>💔</div>
-        <h3 style={{ fontSize: '1.5rem', marginBottom: '1rem', color: '#333' }}>
+        <h3 style={{ fontSize: '1.5rem', marginBottom: '1rem', color: 'white' }}>
           {t('favorites_no_songs')}
         </h3>
         <p style={{ fontSize: '1.1rem', margin: '0' }}>
@@ -183,10 +153,10 @@ const Favorites: React.FC = () => {
   return (
     <div style={{ maxWidth: '100%', margin: '0 auto' }}>
       <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-        <h2 style={{ fontSize: '2.5rem', margin: '0 0 1rem 0', color: '#333' }}>
+        <h2 style={{ fontSize: '2.5rem', margin: '0 0 1rem 0', color: 'white' }}>
           ❤️ {t('favorites_title')}
         </h2>
-        <p style={{ fontSize: '1.2rem', color: '#666', margin: '0' }}>
+        <p style={{ fontSize: '1.2rem', color: 'rgba(255, 255, 255, 0.85)', margin: '0' }}>
           {songs.length} {songs.length === 1 ? t('favorites_count_single') : t('favorites_count_multiple')}
         </p>
       </div>
@@ -242,34 +212,11 @@ const Favorites: React.FC = () => {
             
             <div style={{ padding: '2rem' }}>
               <div style={{ marginBottom: '1.5rem' }}>
-                {typeof window !== 'undefined' && /Mobi|Android|iPhone|iPad|iPod|Opera Mini|IEMobile/i.test(navigator.userAgent) ? null : (
-                  <div style={{ 
-                    borderRadius: '12px',
-                    overflow: 'hidden',
-                    marginBottom: '1rem',
-                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
-                  }}>
-                    <iframe
-                      width="100%"
-                      height="200"
-                      src={`https://www.youtube.com/embed/${song.youtube_video_id}`}
-                      title={song.title}
-                      frameBorder="0"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                      style={{ display: 'block' }}
-                    />
-                  </div>
-                )}
                 <BeautifulAudioPlayer
-                  src={`${API_BASE_URL}/recommend/youtube-audio?video_id=${song.youtube_video_id}`}
+                  videoId={song.youtube_video_id}
                   title={song.title}
-                  artist={song.artist}
-                  style={{ 
-                    width: '100%', 
-                    borderRadius: '8px',
-                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
-                  }}
+                  artist={song.artist || 'Unknown Artist'}
+                  authToken={authToken}
                 />
               </div>
               

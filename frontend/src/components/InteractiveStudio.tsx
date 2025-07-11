@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import { API_BASE_URL, handleTokenExpiration, checkTokenValidity } from '../config';
 import { useTranslation } from 'react-i18next';
 import BeautifulAudioPlayer from './BeautifulAudioPlayer';
@@ -14,6 +15,7 @@ interface MoodAnalysis {
   danceability: number;
   tempo: number;
   genres: string[];
+  generationProgress?: number;
 }
 
 interface Recommendation {
@@ -36,7 +38,13 @@ interface BeatsData {
   generationProgress?: number;
 }
 
-const InteractiveStudio: React.FC = () => {
+interface InteractiveStudioProps {
+  onAnalysisComplete: (analysis: any) => void;
+  likedSongs: Set<string>;
+  onLikeUpdate: () => void;
+}
+
+const InteractiveStudio: React.FC<InteractiveStudioProps> = ({ onAnalysisComplete, likedSongs, onLikeUpdate }) => {
   const { t, i18n } = useTranslation();
   const { user } = useUser();
   const { getToken } = useAuth();
@@ -95,14 +103,25 @@ const InteractiveStudio: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<'upload' | 'analysis' | 'recommendations' | 'beats'>(initialState.activeSection);
-  const [liked, setLiked] = useState<{ [key: string]: boolean }>(initialState.liked);
+  
+  // Удаляем локальное состояние 'liked'
+  // const [liked, setLiked] = useState<{ [key: string]: boolean }>(initialState.liked);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const analysisRef = useRef<HTMLDivElement>(null);
   const recommendationsRef = useRef<HTMLDivElement>(null);
+  const beatsRef = useRef<HTMLDivElement>(null);
   const [dragActive, setDragActive] = useState(false);
   const [activeRecommendationTab, setActiveRecommendationTab] = useState<'personal' | 'global'>(initialState.activeRecommendationTab);
   const [showLimitModal, setShowLimitModal] = useState(false);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [generatedMusic, setGeneratedMusic] = useState<{ url: string, prompt: string, videoId: string } | null>(null); // Добавим videoId для плеера
+  const [currentlyPlaying, setCurrentlyPlaying] = useState<string | null>(null);
+
+  // Используем ref для отслеживания состояния генерации, чтобы избежать проблем с замыканиями
+  const generationStateRef = useRef(beatsData);
+  useEffect(() => {
+    generationStateRef.current = beatsData;
+  }, [beatsData]);
 
   // Helper function to get YouTube video ID (simplified search)
   // Кеш для YouTube видео
@@ -205,12 +224,12 @@ const InteractiveStudio: React.FC = () => {
       recommendations,
       beatsData,
       activeSection,
-      liked,
+      liked: initialState.liked, // Сохраняем только liked из initialState
       activeRecommendationTab,
       youtubeCache
     };
     saveStateToStorage(stateToSave);
-  }, [moodAnalysis, recommendations, beatsData, activeSection, liked, activeRecommendationTab, youtubeCache]);
+  }, [moodAnalysis, recommendations, beatsData, activeSection, activeRecommendationTab, youtubeCache]);
 
   // Clear messages after 5 seconds
   useEffect(() => {
@@ -432,7 +451,8 @@ const InteractiveStudio: React.FC = () => {
     let progress = 0;
     
     const interval = setInterval(() => {
-      if (!beatsData.generatingBeat) {
+      // Используем ref для актуального состояния
+      if (!generationStateRef.current.generatingBeat) {
         clearInterval(interval);
         return;
       }
@@ -449,10 +469,12 @@ const InteractiveStudio: React.FC = () => {
       // Увеличиваем прогресс на 1% каждую секунду, максимум до 90%
       if (progress < 90) {
         progress += 1;
-        setBeatsData(prev => ({
-          ...prev,
-          generationProgress: progress
-        }));
+        flushSync(() => {
+          setBeatsData(prev => ({
+            ...prev,
+            generationProgress: Math.max(prev.generationProgress || 0, progress)
+          }));
+        });
       }
       
       progress++;
@@ -470,6 +492,13 @@ const InteractiveStudio: React.FC = () => {
     }));
     setError(null);
     setActiveSection('beats');
+
+    // Добавляем автоскролл
+    setTimeout(() => {
+      if (beatsRef.current) {
+        beatsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 100);
 
     try {
       const prompt = `${moodAnalysis.mood} ${moodAnalysis.description} ${moodAnalysis.emotions.join(' ')}`;
@@ -503,13 +532,15 @@ const InteractiveStudio: React.FC = () => {
           pollGenerationStatus(data.request_id);
         } else if (data.audio_url) {
           // Прямой результат
-          setBeatsData(prev => ({
-            ...prev,
-            generatedBeatUrl: `${API_BASE_URL}${data.audio_url}`,
-            generatingBeat: false,
-            generationMessage: "✅ Песня готова!",
-            generationProgress: 100
-          }));
+          flushSync(() => {
+            setBeatsData(prev => ({
+              ...prev,
+              generatedBeatUrl: `${API_BASE_URL}${data.audio_url}`,
+              generatingBeat: false,
+              generationMessage: "✅ Песня готова!",
+              generationProgress: 100
+            }));
+          });
           setSuccess(t('studio_beat_ready'));
           setActiveSection('beats');
         } else {
@@ -527,26 +558,27 @@ const InteractiveStudio: React.FC = () => {
   };
 
   const pollGenerationStatus = async (requestId: string) => {
-    const maxAttempts = 60; // 5 minutes max
-    let attempts = 0;
-
-    // Функция для обновления прогресса (теперь только для финального этапа)
-    const updateProgress = (attemptNumber: number) => {
-      // Только обновляем до 95% если прогресс еще не достиг этого значения
-      const progress = Math.min((attemptNumber / maxAttempts) * 100, 95);
-      
-      setBeatsData(prev => ({
-        ...prev,
-        generationProgress: Math.max(prev.generationProgress || 0, progress)
-      }));
-    };
+    const pollStartTime = Date.now();
+    const maxPollDuration = 15 * 60 * 1000; // Увеличиваем таймаут до 15 минут
 
     const poll = async () => {
+      // Прекращаем опрос, если пользователь ушел со страницы или начал заново
+      if (!generationStateRef.current.generatingBeat) {
+        console.log("Polling stopped because generation is no longer active.");
+        return;
+      }
+
+      // Проверяем общий таймаут
+      if (Date.now() - pollStartTime > maxPollDuration) {
+        flushSync(() => {
+          setError(t('studio_beat_timeout'));
+          setBeatsData(prev => ({ ...prev, generatingBeat: false }));
+        });
+        return;
+      }
+
       try {
-        // Обновляем прогресс перед каждым запросом
-        updateProgress(attempts);
-        
-        console.log(`🔄 Polling status for request_id: ${requestId}, attempt: ${attempts + 1}`);
+        console.log(`🔄 Polling status for request_id: ${requestId}`);
         
         const response = await fetch(`${API_BASE_URL}/chat/generate-beat/status`, {
           method: 'POST',
@@ -590,42 +622,48 @@ const InteractiveStudio: React.FC = () => {
             console.log('Extracted audio URL:', audioUrl);
             
             if (audioUrl) {
-              setBeatsData(prev => ({
-                ...prev,
-                generatedBeatUrl: audioUrl,
-                generatingBeat: false,
-                generationMessage: "✅ Песня готова!",
-                generationProgress: 100
-              }));
-              setSuccess(t('studio_beat_ready'));
-              setActiveSection('beats');
+              // Используем flushSync для немедленного обновления
+              flushSync(() => {
+                setBeatsData(prev => ({
+                  ...prev,
+                  generatedBeatUrl: audioUrl,
+                  generatingBeat: false,
+                  generationMessage: "✅ Песня готова!",
+                  generationProgress: 100
+                }));
+                setSuccess(t('studio_beat_ready'));
+                setActiveSection('beats');
+              });
               return;
             } else {
               console.error('No audio URL found in response:', data.status);
-              setError('Audio URL not found in response');
-              setBeatsData(prev => ({ ...prev, generatingBeat: false }));
+              // Используем flushSync для немедленного обновления
+              flushSync(() => {
+                setError('Audio URL not found in response');
+                setBeatsData(prev => ({ ...prev, generatingBeat: false }));
+              });
               return;
             }
           } else if (status === 'failed') {
-            setError(t('studio_beat_failed'));
-            setBeatsData(prev => ({ ...prev, generatingBeat: false }));
+            flushSync(() => {
+              setError(t('studio_beat_failed'));
+              setBeatsData(prev => ({ ...prev, generatingBeat: false }));
+            });
             return;
           } else if (status === 'pending') {
             // Continue polling
           }
         }
 
-        attempts++;
-        if (attempts < maxAttempts) {
-          setTimeout(poll, 5000); // Poll every 5 seconds
-        } else {
-          setError(t('studio_beat_timeout'));
-          setBeatsData(prev => ({ ...prev, generatingBeat: false }));
-        }
+        // Ставим следующий опрос
+        setTimeout(poll, 5000); // Poll every 5 seconds
+        
       } catch (error) {
         console.error('Error polling generation status:', error);
-        setError(t('studio_beat_status_error'));
-        setBeatsData(prev => ({ ...prev, generatingBeat: false }));
+        flushSync(() => {
+          setError(t('studio_beat_status_error'));
+          setBeatsData(prev => ({ ...prev, generatingBeat: false }));
+        });
       }
     };
 
@@ -633,13 +671,17 @@ const InteractiveStudio: React.FC = () => {
   };
 
   const handleLike = async (track: string, artist: string) => {
-    const token = localStorage.getItem('auth_token');
+    // Получаем токен из Clerk, а не из localStorage
+    const token = await getToken(); 
     if (!token) {
-      setError('Authentication required');
+      setError('Требуется авторизация');
       return;
     }
 
     try {
+      // Получаем ID видео из кеша, чтобы сохранить его
+      const videoId = youtubeCache[`${track}-${artist}`] || `search:${track}-${artist}`;
+
       const response = await fetch(`${API_BASE_URL}/media/saved-songs`, {
         method: 'POST',
         headers: {
@@ -647,24 +689,27 @@ const InteractiveStudio: React.FC = () => {
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          youtube_video_id: `search:${track}-${artist}`,
+          youtube_video_id: videoId,
           title: track,
           artist: artist
         })
       });
 
       if (response.ok) {
-        setLiked(prev => ({ ...prev, [`${track}-${artist}`]: true }));
-        setSuccess('Added to favorites!');
+        // setLiked(prev => ({ ...prev, [`${track}-${artist}`]: true }));
+        setSuccess('Добавлено в избранное!');
+        onLikeUpdate(); // <-- Вызываем колбэк для обновления
       } else if (response.status === 409) {
         // Песня уже сохранена
-        setLiked(prev => ({ ...prev, [`${track}-${artist}`]: true }));
+        // setLiked(prev => ({ ...prev, [`${track}-${artist}`]: true }));
         setError('Эта песня уже сохранена в избранном');
+        onLikeUpdate(); // <-- И здесь тоже на всякий случай
       } else {
-        setError('Failed to add to favorites');
+        const errorData = await response.json();
+        setError(errorData.detail || 'Не удалось добавить в избранное');
       }
     } catch (error) {
-      setError('Error adding to favorites');
+      setError('Ошибка при добавлении в избранное');
     }
   };
 
@@ -676,9 +721,11 @@ const InteractiveStudio: React.FC = () => {
     setError(null);
     setSuccess(null);
     setActiveSection('upload');
-    setLiked({});
+    // setLiked({}); // Удаляем локальное состояние liked
     setYoutubeCache({});
     setActiveRecommendationTab('personal');
+    setGeneratedMusic(null); // Сбрасываем сгенерированную музыку
+    setCurrentlyPlaying(null); // Сбрасываем текущее воспроизведение
     
     // Очищаем localStorage
     try {
@@ -939,7 +986,7 @@ const InteractiveStudio: React.FC = () => {
                           )}
                           {/* Красивый аудиоплеер */}
                           <BeautifulAudioPlayer
-                            src={`${API_BASE_URL}/recommend/youtube-audio?video_id=${videoId}`}
+                            videoId={videoId}
                             title={rec.name}
                             artist={rec.artist}
                             style={{ 
@@ -947,6 +994,8 @@ const InteractiveStudio: React.FC = () => {
                               borderRadius: '8px',
                               boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
                             }}
+                            onAudioPlay={() => setCurrentlyPlaying(videoId)}
+                            onAudioPause={() => setCurrentlyPlaying(null)}
                           />
                         </div>
                       ) : (
@@ -966,10 +1015,10 @@ const InteractiveStudio: React.FC = () => {
                     
                     <button 
                       onClick={() => handleLike(rec.name, rec.artist)}
-                      disabled={liked[`${rec.name}-${rec.artist}`]}
-                      className={`btn btn-like ${liked[`${rec.name}-${rec.artist}`] ? 'liked' : ''}`}
+                      disabled={likedSongs.has(youtubeCache[`${rec.name}-${rec.artist}`])}
+                      className={`btn btn-like ${likedSongs.has(youtubeCache[`${rec.name}-${rec.artist}`]) ? 'liked' : ''}`}
                     >
-                      {liked[`${rec.name}-${rec.artist}`] ? `❤️ ${t('studio_liked')}` : `🤍 ${t('studio_like')}`}
+                      {likedSongs.has(youtubeCache[`${rec.name}-${rec.artist}`]) ? `❤️ ${t('studio_liked')}` : `❤️ ${t('studio_like')}`}
                     </button>
                   </div>
                 );
@@ -981,7 +1030,7 @@ const InteractiveStudio: React.FC = () => {
 
       {/* Beat Generation */}
       {(beatsData.generatingBeat || beatsData.generatedBeatUrl) && (
-        <div className="section">
+        <div className="section" ref={beatsRef}>
           <div className="section-header">
             <h2>🎹 {t('studio_beat_title')}</h2>
             <p>{t('studio_beat_description')}</p>
@@ -1007,11 +1056,12 @@ const InteractiveStudio: React.FC = () => {
               <div className="generated-beat">
                 <h3>{t('studio_beat_ready')}</h3>
                 <BeautifulAudioPlayer 
-                  src={beatsData.generatedBeatUrl}
+                  src={beatsData.generatedBeatUrl} // Используем прямой src
                   title={t('studio_beat_title')}
                   artist="AI Generated"
                   style={{ width: '100%', marginTop: '16px' }}
-                  enableDownload={true}
+                  onAudioPlay={() => setCurrentlyPlaying(beatsData.generatedBeatUrl || null)}
+                  onAudioPause={() => setCurrentlyPlaying(null)}
                 />
               </div>
             ) : null}
@@ -1022,44 +1072,15 @@ const InteractiveStudio: React.FC = () => {
       {/* Модальное окно лимита */}
       {showLimitModal && (
         <div className="modal-overlay" onClick={handleCloseLimitModal}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>⚠️ {t('limit_exceeded_title') || 'Лимит исчерпан'}</h2>
-              <button className="modal-close" onClick={handleCloseLimitModal}>
-                ×
-              </button>
-            </div>
-            <div className="modal-body">
-              <p>
-                {t('limit_exceeded_message') || 
-                'У вас исчерпан лимит анализов на сегодня (3/3). Вы можете:'
-                }
-              </p>
-              <ul>
-                <li>{t('wait_tomorrow') || 'Подождать до завтра (лимит обновится в 00:00)'}</li>
-                <li>{t('upgrade_for_unlimited') || 'Перейти на PRO для безлимитных анализов'}</li>
-              </ul>
-              {userProfile && (
-                <div className="usage-info-modal">
-                  <p><strong>{t('current_usage') || 'Текущее использование'}:</strong> {userProfile.daily_usage}/3</p>
-                  <p><strong>{t('account_type') || 'Тип аккаунта'}:</strong> {userProfile.account_type}</p>
-                </div>
-              )}
-            </div>
-            <div className="modal-footer">
-              <button 
-                className="btn-upgrade-modal"
-                onClick={handleUpgrade}
-              >
-                ⭐ {t('upgrade_to_pro') || 'UPGRADE TO PRO'}
-              </button>
-              <button 
-                className="btn-cancel-modal"
-                onClick={handleCloseLimitModal}
-              >
-                {t('wait_tomorrow') || 'Подождать до завтра'}
-              </button>
-            </div>
+          <div className="modal-content">
+            <h2>�� Лимит анализов исчерпан</h2>
+            <p>Вы использовали все свои бесплатные анализы. Чтобы продолжить, пожалуйста, обновите свой аккаунт на PRO.</p>
+            <button onClick={handleUpgrade} className="btn btn-primary">
+              Обновить на PRO
+            </button>
+            <button onClick={handleCloseLimitModal} className="btn btn-secondary">
+              Закрыть
+            </button>
           </div>
         </div>
       )}
@@ -1067,4 +1088,4 @@ const InteractiveStudio: React.FC = () => {
   );
 };
 
-export default InteractiveStudio; 
+export default InteractiveStudio;

@@ -32,7 +32,7 @@ app.add_middleware(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-	"https://aivi-ai.it.com",
+        "https://aivi-ai.it.com",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:5173",  # Vite dev server
@@ -51,7 +51,7 @@ async def health_check():
 # Подключаем роуты
 app.include_router(auth.router, prefix="/auth")
 app.include_router(media.router, prefix="/media")
-app.include_router(recommend.router, prefix="/recommend")
+app.include_router(recommend.recommend_router, prefix="/recommend")
 app.include_router(chat.router, prefix="/chat")
 app.include_router(users.router, prefix="/users")
 
