@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Query, Response, HTTPException
+from fastapi.responses import FileResponse
 
 import requests
 import os
@@ -32,6 +33,7 @@ def get_ydl_options(use_proxy=True, client_type='android_tv'):
         'retries': 1,  # Уменьшаем количество попыток для ускорения
         'socket_timeout': 10,  # Уменьшаем таймаут
         'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'nocheckcertificate': True,  # Добавляем для обхода возможных проблем с SSL
         'extractor_args': {
             'youtube': {
                 'player_client': [client_type],
@@ -238,6 +240,7 @@ def youtube_audio(video_id: str):
     if not filename or not os.path.exists(filename):
         print(f"File not found after yt-dlp for video_id={video_id}")
         return Response(content='{"error": "Не удалось скачать аудио с YouTube. Возможно, видео недоступно."}', media_type="application/json", status_code=400)
+
     # Определяем mime-type по расширению
     mime_map = {
         "m4a": "audio/mp4",
@@ -246,8 +249,8 @@ def youtube_audio(video_id: str):
         "mp3": "audio/mpeg",
     }
     mime_type = mime_map.get(ext, "application/octet-stream")
-    with open(filename, "rb") as f:
-        audio_data = f.read()
-    return Response(content=audio_data, media_type=mime_type)
+    
+    # Используем FileResponse для более эффективной отдачи файла
+    return FileResponse(path=filename, media_type=mime_type, filename=f"{video_id}.{ext}")
 
 

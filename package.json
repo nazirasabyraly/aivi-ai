@@ -19,6 +19,8 @@
   "homepage": "https://github.com/nazirasabyraly/nfac-project#readme",
   "dependencies": {
     "dotenv": "^16.5.0",
-    "puppeteer": "^24.10.2"
+    "puppeteer": "^24.10.2",
+    "react-icons": "^5.5.0",
+    "react-toastify": "^11.0.5"
   }
 }

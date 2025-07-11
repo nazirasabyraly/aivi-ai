@@ -10,6 +10,8 @@ import Callback from './pages/callback'
 import Setup from './pages/setup'
 import Dashboard from './pages/dashboard'
 import LanguageSwitcher from './components/LanguageSwitcher'
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 // Получаем Clerk Publishable Key из переменных окружения
 const clerkPubKey = (import.meta as any).env?.VITE_CLERK_PUBLIC_KEY
@@ -38,6 +40,19 @@ const App = () => {
             <Route path="/setup" element={<Setup />} />
             <Route path="/dashboard" element={<Dashboard />} />
           </Routes>
+          <ToastContainer
+            position="bottom-right"
+            autoClose={5000}
+            hideProgressBar={false}
+            newestOnTop={false}
+            closeOnClick
+            rtl={false}
+            pauseOnFocusLoss
+            draggable
+            pauseOnHover
+            theme="light"
+            aria-label="toast-container"
+          />
         </BrowserRouter>
       </div>
     </ClerkProvider>
