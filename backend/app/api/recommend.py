@@ -66,12 +66,6 @@ else:
     try:
         version = subprocess.check_output(['yt-dlp', '--version'], text=True).strip()
         print(f'✅ yt-dlp version: {version}')
-        # Попробовать обновить yt-dlp
-        try:
-            subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--upgrade', 'yt-dlp'])
-            print('🔄 yt-dlp обновлён до последней версии.')
-        except Exception as e:
-            print(f'⚠️ Не удалось обновить yt-dlp: {e}')
     except Exception as e:
         print(f'⚠️ Не удалось получить версию yt-dlp: {e}')
 
