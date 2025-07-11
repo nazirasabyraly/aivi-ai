@@ -24,6 +24,9 @@ class WebshareProxyConfig:
     def __init__(self, proxy_username: str, proxy_password: str):
         self.proxy_username = proxy_username
         self.proxy_password = proxy_password
+        # Webshare правильные настройки
+        self.proxy_host = "p.webshare.io"
+        self.proxy_port = 80
 
 proxy_cfg = WebshareProxyConfig(
     proxy_username="ujaoszjw",
@@ -81,22 +84,20 @@ def _download_with_retries(video_url: str, video_id: str):
     """Сначала быстрая попытка с прокси, если не удалась - напрямую."""
     proxy_url = None
     
-    # Используем WebshareProxyConfig вместо старой конфигурации
+    # Используем правильный формат Webshare прокси как в test_webhook.py
     if proxy_cfg.proxy_username and proxy_cfg.proxy_password:
-        # Генерируем уникальную сессию для ротации IP
-        session_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
-        proxy_username = f"{proxy_cfg.proxy_username}-session-{session_id}"
-        # WebshareProxyConfig использует стандартные настройки: host и port
-        proxy_url = f"http://{proxy_username}:{proxy_cfg.proxy_password}@95.56.238.194:80"
+        # Используем -rotate для автоматической ротации IP
+        proxy_username = f"{proxy_cfg.proxy_username}-rotate"
+        proxy_url = f"http://{proxy_username}:{proxy_cfg.proxy_password}@{proxy_cfg.proxy_host}:{proxy_cfg.proxy_port}/"
 
     # Попытка 1: С прокси (если настроен)
     if proxy_url:
         try:
-            log.info(f"Attempting download with proxy for {video_id}...")
+            log.info(f"Attempting download with Webshare proxy for {video_id}...")
             return _download_video(video_url, video_id, proxy=proxy_url)
         except Exception as e:
             # Логируем, что прокси не сработал, и ПРОДОЛЖАЕМ, а не падаем
-            log.warning(f"⚠️ Proxy download failed for {video_id}. Error: {e}. Trying direct connection...")
+            log.warning(f"⚠️ Webshare proxy download failed for {video_id}. Error: {e}. Trying direct connection...")
 
     # Попытка 2: Напрямую (если прокси не настроен или не сработал)
     try:
