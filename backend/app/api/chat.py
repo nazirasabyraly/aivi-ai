@@ -289,7 +289,7 @@ async def generate_beat(request: GenerateBeatRequest, background_tasks: Backgrou
     request_id = uuid.uuid4().hex  # Генерируем уникальный ID для отслеживания
 
     # Запускаем тяжелую задачу в фоне
-    background_tasks.add_task(asyncio.create_task, _run_riffusion_generation(prompt, request_id))
+    background_tasks.add_task(_run_riffusion_generation, prompt, request_id)
 
     # Немедленно возвращаем ответ
     return GenerateBeatResponse(
