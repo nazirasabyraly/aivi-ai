@@ -17,10 +17,16 @@ router = APIRouter()
 
 @router.get("/saved-songs", response_model=List[SavedSongSchema])
 def get_saved_songs(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return db.query(DBSavedSong).filter(DBSavedSong.user_id == current_user.id).order_by(DBSavedSong.date_saved.desc()).all()
+    songs = db.query(DBSavedSong).filter(DBSavedSong.user_id == current_user.id).order_by(DBSavedSong.date_saved.desc()).all()
+    print(f"🎵 [BACKEND] Fetching saved songs for user_id={current_user.id}: {len(songs)} songs found")
+    for song in songs:
+        print(f"  - {song.title} by {song.artist} (video_id: {song.youtube_video_id})")
+    return songs
 
 @router.post("/saved-songs", response_model=SavedSongSchema, status_code=status.HTTP_201_CREATED)
 def add_saved_song(song: SavedSongCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    print(f"🎵 [BACKEND] Attempting to save song: title='{song.title}', artist='{song.artist}', video_id='{song.youtube_video_id}' for user_id={current_user.id}")
+    
     # Проверяем, не сохранена ли уже эта песня у данного пользователя
     # Сначала проверяем по video_id
     existing_song_by_video = db.query(DBSavedSong).filter(
@@ -34,6 +40,12 @@ def add_saved_song(song: SavedSongCreate, db: Session = Depends(get_db), current
         DBSavedSong.title == song.title,
         DBSavedSong.artist == song.artist
     ).first()
+    
+    if existing_song_by_video:
+        print(f"⚠️ [BACKEND] Song already exists by video_id: {existing_song_by_video.title} by {existing_song_by_video.artist}")
+    
+    if existing_song_by_title:
+        print(f"⚠️ [BACKEND] Song already exists by title/artist: {existing_song_by_title.title} by {existing_song_by_title.artist} (video_id: {existing_song_by_title.youtube_video_id})")
     
     if existing_song_by_video or existing_song_by_title:
         raise HTTPException(
@@ -51,6 +63,8 @@ def add_saved_song(song: SavedSongCreate, db: Session = Depends(get_db), current
     db.add(db_song)
     db.commit()
     db.refresh(db_song)
+    
+    print(f"✅ [BACKEND] Song saved successfully: {db_song.title} by {db_song.artist} (video_id: {db_song.youtube_video_id})")
     return db_song
 
 @router.delete("/saved-songs/{youtube_video_id}", status_code=status.HTTP_204_NO_CONTENT)

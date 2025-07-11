@@ -660,6 +660,14 @@ const InteractiveStudio: React.FC<InteractiveStudioProps> = ({ onAnalysisComplet
       // Получаем ID видео из кеша, чтобы сохранить его
       const videoId = youtubeCache[`${track}-${artist}`] || `search:${track}-${artist}`;
 
+      console.log(`🎵 Trying to like song:`, {
+        track,
+        artist,
+        videoId,
+        cacheKey: `${track}-${artist}`,
+        youtubeCache
+      });
+
       const response = await fetch(`${API_BASE_URL}/media/saved-songs`, {
         method: 'POST',
         headers: {
@@ -674,14 +682,17 @@ const InteractiveStudio: React.FC<InteractiveStudioProps> = ({ onAnalysisComplet
       });
 
       if (response.ok) {
+        console.log(`✅ Song "${track}" by "${artist}" successfully added to favorites`);
         setSuccess('Добавлено в избранное!');
         onLikeUpdate(); // <-- Вызываем колбэк для обновления
       } else if (response.status === 409) {
         // Песня уже сохранена
+        console.log(`⚠️ Song "${track}" by "${artist}" already exists in favorites`);
         setError('Эта песня уже сохранена в избранном');
         onLikeUpdate(); // <-- И здесь тоже на всякий случай
       } else {
         const errorData = await response.json();
+        console.error(`❌ Failed to like song "${track}" by "${artist}":`, errorData);
         setError(errorData.detail || 'Не удалось добавить в избранное');
       }
     } catch (error) {
@@ -697,19 +708,40 @@ const InteractiveStudio: React.FC<InteractiveStudioProps> = ({ onAnalysisComplet
     
     // Проверяем по video ID если он есть в кеше
     if (videoId && likedSongs.has(videoId)) {
+      console.log(`✅ Song "${track}" by "${artist}" is liked by videoId: ${videoId}`);
       return true;
     }
     
     // Проверяем по fallback ID
     const fallbackId = `search:${track}-${artist}`;
     if (likedSongs.has(fallbackId)) {
+      console.log(`✅ Song "${track}" by "${artist}" is liked by fallbackId: ${fallbackId}`);
       return true;
     }
     
-    // Проверяем по названию и артисту в сохраненных песнях
-    const isLikedByTitleArtist = likedSongsData.some(song => 
-      song.title === track && song.artist === artist
-    );
+    // Проверяем по названию и артисту в сохраненных песнях (без учета регистра)
+    const isLikedByTitleArtist = likedSongsData.some(song => {
+      const titleMatch = song.title?.toLowerCase().trim() === track.toLowerCase().trim();
+      const artistMatch = song.artist?.toLowerCase().trim() === artist.toLowerCase().trim();
+      const match = titleMatch && artistMatch;
+      
+      if (match) {
+        console.log(`✅ Song "${track}" by "${artist}" is liked by title/artist match:`, song);
+      }
+      
+      return match;
+    });
+    
+    // Отладочная информация
+    console.log(`🔍 Checking if "${track}" by "${artist}" is liked:`, {
+      videoId,
+      fallbackId,
+      hasVideoId: videoId && likedSongs.has(videoId),
+      hasFallbackId: likedSongs.has(fallbackId),
+      isLikedByTitleArtist,
+      likedSongsData: likedSongsData.map(s => ({ title: s.title, artist: s.artist })),
+      likedSongs: Array.from(likedSongs)
+    });
     
     return isLikedByTitleArtist;
   };

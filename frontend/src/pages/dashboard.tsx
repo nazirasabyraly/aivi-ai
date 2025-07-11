@@ -39,8 +39,10 @@ const Dashboard = () => {
       });
       if (response.ok) {
         const songs = await response.json();
+        console.log('🎵 Fetched liked songs:', songs);
         setLikedSongs(new Set(songs.map((s: any) => s.youtube_video_id)));
         setLikedSongsData(songs); // Сохраняем полные данные песен
+        console.log('🎵 Liked songs Set:', Array.from(new Set(songs.map((s: any) => s.youtube_video_id))));
       }
     } catch (error) {
       console.error("Failed to fetch liked songs:", error);

@@ -232,19 +232,20 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({ videoId, sr
             {/* Error Message or Status */}
             {error && (
                 <div style={{ 
-                    background: 'rgba(255, 193, 7, 0.2)',
-                    color: '#fff',
+                    background: 'rgba(255, 193, 7, 0.9)', // Увеличил непрозрачность фона
+                    color: '#1a1a1a', // Темный текст для лучшего контраста
                     padding: '12px',
                     borderRadius: '8px',
                     marginBottom: '16px',
                     fontSize: '14px',
                     textAlign: 'center',
-                    border: '1px solid rgba(255, 193, 7, 0.3)'
+                    border: '1px solid rgba(255, 193, 7, 0.8)',
+                    fontWeight: '500' // Добавил жирность для лучшей читаемости
                 }}>
                     {error.includes("temporarily unavailable") ? (
                         <>
-                            <div style={{ marginBottom: '4px' }}>⚠️ Аудио временно недоступно</div>
-                            <div style={{ fontSize: '12px', opacity: 0.8 }}>
+                            <div style={{ marginBottom: '4px', fontWeight: '600' }}>⚠️ Аудио временно недоступно</div>
+                            <div style={{ fontSize: '12px', opacity: 0.8, color: '#333' }}>
                                 Мы работаем над решением.
                             </div>
                         </>
