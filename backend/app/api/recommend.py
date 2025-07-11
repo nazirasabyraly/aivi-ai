@@ -22,26 +22,25 @@ log = logging.getLogger(__name__)
 # Конфигурация прокси для обхода блокировок YouTube
 class ProxyConfig:
     def __init__(self):
-        # Webshare прокси настройки (правильный формат)
+        # Webshare прокси настройки (правильный формат для Webshare)
         self.proxy_username = "ujaoszjw"
         self.proxy_password = "573z5xhtgbci"
         self.proxy_host = "p.webshare.io"
         self.proxy_port = 80
         
-        # Список различных прокси для ротации (правильный формат Webshare)
+        # Правильный формат для Webshare - без дополнительных суффиксов
+        self.base_proxy = f"http://{self.proxy_username}:{self.proxy_password}@{self.proxy_host}:{self.proxy_port}"
+        
+        # Список прокси для ротации (используем базовый формат)
         self.proxy_endpoints = [
-            f"http://{self.proxy_username}-rotate:{self.proxy_password}@{self.proxy_host}:{self.proxy_port}",
-            f"http://{self.proxy_username}-session-1:{self.proxy_password}@{self.proxy_host}:{self.proxy_port}",
-            f"http://{self.proxy_username}-session-2:{self.proxy_password}@{self.proxy_host}:{self.proxy_port}",
-            f"http://{self.proxy_username}-session-3:{self.proxy_password}@{self.proxy_host}:{self.proxy_port}",
-            f"http://{self.proxy_username}-session-4:{self.proxy_password}@{self.proxy_host}:{self.proxy_port}",
+            self.base_proxy,
+            f"http://{self.proxy_username}:{self.proxy_password}@{self.proxy_host}:{self.proxy_port}",
         ]
         
-        # Альтернативные эндпоинты для разных регионов
+        # Альтернативные порты Webshare
         self.alternative_endpoints = [
-            f"http://{self.proxy_username}-country-US:{self.proxy_password}@{self.proxy_host}:{self.proxy_port}",
-            f"http://{self.proxy_username}-country-GB:{self.proxy_password}@{self.proxy_host}:{self.proxy_port}",
-            f"http://{self.proxy_username}-country-DE:{self.proxy_password}@{self.proxy_host}:{self.proxy_port}",
+            f"http://{self.proxy_username}:{self.proxy_password}@{self.proxy_host}:8080",
+            f"http://{self.proxy_username}:{self.proxy_password}@{self.proxy_host}:8000",
         ]
         
         # Все доступные прокси
@@ -209,63 +208,83 @@ def _download_video_direct(video_url: str, video_id: str):
         log.warning(f"❌ Direct download failed for {video_id}: {str(e)}")
         raise e
 
-def _download_with_fallback(video_url: str, video_id: str):
-    """Пробует скачать с разными прокси, затем напрямую."""
-    
-    # Сначала перемешиваем прокси для лучшей ротации
-    available_proxies = proxy_config.all_proxies.copy()
-    random.shuffle(available_proxies)
-    
-    # Стратегия 1: Пробуем разные прокси
-    for i, proxy_url in enumerate(available_proxies):
-        try:
-            log.info(f"🔄 Attempt {i+1}/{len(available_proxies)}: Using proxy endpoint")
-            return _download_video_with_proxy(video_url, video_id, proxy_url)
-        except Exception as e:
-            error_msg = str(e).lower()
-            log.warning(f"⚠️ Proxy attempt {i+1} failed: {str(e)[:100]}...")
-            
-            # Если это не ошибка бот-детекции, продолжаем с другими прокси
-            if "sign in to confirm" not in error_msg and "bot" not in error_msg:
-                continue
-            
-            # Если это ошибка бот-детекции, ждем немного и пробуем следующий прокси
-            if i < len(available_proxies) - 1:
-                wait_time = random.uniform(3, 7)
-                log.info(f"⏳ Bot detection error, waiting {wait_time:.1f}s before next proxy...")
-                time.sleep(wait_time)
-                continue
-    
-    # Стратегия 2: Пробуем без прокси как последний шанс
+def _test_proxy(proxy_url: str) -> bool:
+    """Тестирует прокси соединение."""
     try:
-        log.info("🔄 All proxies failed, trying direct connection as last resort...")
-        # Ждем дольше перед прямым подключением
+        import requests
+        response = requests.get(
+            'https://httpbin.org/ip',
+            proxies={'http': proxy_url, 'https': proxy_url},
+            timeout=10
+        )
+        if response.status_code == 200:
+            log.info(f"✅ Proxy test successful: {proxy_url.split('@')[0].split('://')[-1]}@***")
+            return True
+        else:
+            log.warning(f"❌ Proxy test failed with status {response.status_code}")
+            return False
+    except Exception as e:
+        log.warning(f"❌ Proxy test failed: {str(e)}")
+        return False
+
+def _download_with_fallback(video_url: str, video_id: str):
+    """Пробует скачать с рабочими прокси, затем напрямую."""
+    
+    # Сначала тестируем прокси и используем только рабочие
+    working_proxies = []
+    for proxy_url in proxy_config.all_proxies:
+        if _test_proxy(proxy_url):
+            working_proxies.append(proxy_url)
+    
+    if working_proxies:
+        log.info(f"🔄 Found {len(working_proxies)} working proxies")
+        random.shuffle(working_proxies)
+        
+        # Стратегия 1: Пробуем рабочие прокси
+        for i, proxy_url in enumerate(working_proxies):
+            try:
+                log.info(f"🔄 Attempt {i+1}/{len(working_proxies)}: Using tested proxy")
+                return _download_video_with_proxy(video_url, video_id, proxy_url)
+            except Exception as e:
+                error_msg = str(e).lower()
+                log.warning(f"⚠️ Proxy attempt {i+1} failed: {str(e)[:100]}...")
+                
+                # Если это ошибка бот-детекции, ждем и пробуем следующий
+                if "sign in to confirm" in error_msg or "bot" in error_msg:
+                    if i < len(working_proxies) - 1:
+                        wait_time = random.uniform(3, 7)
+                        log.info(f"⏳ Bot detection, waiting {wait_time:.1f}s...")
+                        time.sleep(wait_time)
+                        continue
+                else:
+                    continue
+    else:
+        log.warning("⚠️ No working proxies found, going directly to fallback")
+    
+    # Стратегия 2: Пробуем без прокси
+    try:
+        log.info("🔄 Trying direct connection...")
         time.sleep(random.uniform(5, 10))
         return _download_video_direct(video_url, video_id)
     except Exception as e:
-        log.error(f"❌ Direct connection also failed: {str(e)}")
+        log.error(f"❌ Direct connection failed: {str(e)}")
         
-        # Определяем тип ошибки для более точного сообщения
+        # Определяем тип ошибки
         error_msg = str(e).lower()
         if "sign in to confirm" in error_msg or "bot" in error_msg:
             raise HTTPException(
                 status_code=503, 
-                detail="YouTube has temporarily blocked all our connections. Please try again in a few minutes."
+                detail="YouTube has blocked all our connections. Please try again later."
             )
         elif "unavailable" in error_msg or "private" in error_msg:
             raise HTTPException(
                 status_code=404, 
-                detail="This video is not available for download."
-            )
-        elif "timeout" in error_msg or "connection" in error_msg:
-            raise HTTPException(
-                status_code=504, 
-                detail="Connection timeout. Please try again."
+                detail="This video is not available."
             )
         else:
             raise HTTPException(
                 status_code=500, 
-                detail=f"Failed to download video after all attempts. Error: {str(e)[:100]}"
+                detail="Failed to download video after all attempts."
             )
 
 @recommend_router.get("/youtube-audio")
