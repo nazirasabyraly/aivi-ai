@@ -193,18 +193,14 @@ const InteractiveStudio: React.FC<InteractiveStudioProps> = ({ onAnalysisComplet
     }
     
     // Fallback к демо видео если поиск не удался
-    const fallbackVideoIds = [
-      'dQw4w9WgXcQ', // Rick Astley - Never Gonna Give You Up
-      'fJ9rUzIMcZQ', // Queen - Bohemian Rhapsody
-      'kJQP7kiw5Fk', // Despacito
-    ];
+    const generateFallbackId = (trackName: string, artistName: string) => {
+      // Create a unique fallback ID based on track and artist
+      const sanitizedTrack = trackName.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const sanitizedArtist = artistName.toLowerCase().replace(/[^a-z0-9]/g, '');
+      return `fallback_${sanitizedTrack}_${sanitizedArtist}`;
+    };
     
-    const hash = (trackName + artistName).split('').reduce((a, b) => {
-      a = ((a << 5) - a) + b.charCodeAt(0);
-      return a & a;
-    }, 0);
-    
-    const fallbackId = fallbackVideoIds[Math.abs(hash) % fallbackVideoIds.length];
+    const fallbackId = generateFallbackId(trackName, artistName);
     setYoutubeCache(prev => ({ ...prev, [cacheKey]: fallbackId }));
     return fallbackId;
   };
@@ -706,16 +702,9 @@ const InteractiveStudio: React.FC<InteractiveStudioProps> = ({ onAnalysisComplet
     const cacheKey = `${track}-${artist}`;
     const videoId = youtubeCache[cacheKey];
     
-    // Проверяем по video ID если он есть в кеше
-    if (videoId && likedSongs.has(videoId)) {
+    // Проверяем по video ID если он есть в кеше и не является fallback ID
+    if (videoId && !videoId.startsWith('fallback_') && likedSongs.has(videoId)) {
       console.log(`✅ Song "${track}" by "${artist}" is liked by videoId: ${videoId}`);
-      return true;
-    }
-    
-    // Проверяем по fallback ID
-    const fallbackId = `search:${track}-${artist}`;
-    if (likedSongs.has(fallbackId)) {
-      console.log(`✅ Song "${track}" by "${artist}" is liked by fallbackId: ${fallbackId}`);
       return true;
     }
     
@@ -735,9 +724,8 @@ const InteractiveStudio: React.FC<InteractiveStudioProps> = ({ onAnalysisComplet
     // Отладочная информация
     console.log(`🔍 Checking if "${track}" by "${artist}" is liked:`, {
       videoId,
-      fallbackId,
+      isFallback: videoId?.startsWith('fallback_'),
       hasVideoId: videoId && likedSongs.has(videoId),
-      hasFallbackId: likedSongs.has(fallbackId),
       isLikedByTitleArtist,
       likedSongsData: likedSongsData.map(s => ({ title: s.title, artist: s.artist })),
       likedSongs: Array.from(likedSongs)
