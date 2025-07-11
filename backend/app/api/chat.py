@@ -221,26 +221,20 @@ async def _run_riffusion_generation(prompt: str, request_id: str):
             return
 
         # --- 1. Отправка запроса на генерацию ---
-        url = "https://api.riffusion.com/api/music"  # Updated API endpoint
+        url = "https://riffusionapi.com/api/generate-music"
         headers = {
             "accept": "application/json",
             "x-api-key": RIFFUSION_API_KEY,
             "Content-Type": "application/json"
         }
-        data = {
-            "text": prompt,
-            "duration": 30,  # Duration in seconds
-            "model": "v2",
-            "output_format": "mp3",
-            "temperature": 0.7
-        }
+        data = {"prompt": prompt}
 
         print(f"🎵 [BG] Sending initial request to Riffusion API...")
         response = requests.post(url, headers=headers, json=data, timeout=30)
         print(f"🎵 [BG] Initial response status: {response.status_code}")
         print(f"🎵 [BG] Initial response body: {response.text}")
         
-        if response.status_code != 200 and response.status_code != 202:
+        if response.status_code != 200:
             error_text = response.text
             print(f"❌ [BG] API Error: {error_text}")
             with open(os.path.join(AUDIO_CACHE_DIR, f"{request_id}.error"), "w") as f:
@@ -251,22 +245,23 @@ async def _run_riffusion_generation(prompt: str, request_id: str):
         print(f"🎵 [BG] Initial response: {initial_result}")
         
         # Get the task ID from the response
-        task_id = initial_result.get("task_id")
-        if not task_id:
-            print("❌ [BG] No task_id in response")
+        riffusion_request_id = initial_result.get("request_id")
+        if not riffusion_request_id:
+            print("❌ [BG] No request_id in response")
             with open(os.path.join(AUDIO_CACHE_DIR, f"{request_id}.error"), "w") as f:
-                f.write("Failed to get task_id from API")
+                f.write("Failed to get request_id from API")
             return
 
         # --- 2. Ожидание завершения генерации (Polling) ---
-        status_url = f"https://api.riffusion.com/api/status/{task_id}"
+        status_url = "https://riffusionapi.com/api/generate-music"
+        status_data = {"request_id": riffusion_request_id}
         start_time = time.time()
         max_wait_time = 300  # 5 minutes timeout
         
         while time.time() - start_time < max_wait_time:
             time.sleep(5)
             elapsed = int(time.time() - start_time)
-            print(f"🎵 [BG] Checking status for task_id: {task_id} (elapsed: {elapsed}s)")
+            print(f"🎵 [BG] Checking status for request_id: {riffusion_request_id} (elapsed: {elapsed}s)")
             
             # Save progress status
             with open(os.path.join(AUDIO_CACHE_DIR, f"{request_id}.status"), "w") as f:
@@ -276,7 +271,7 @@ async def _run_riffusion_generation(prompt: str, request_id: str):
                     "progress": min(int((elapsed / max_wait_time) * 100), 95)
                 }))
             
-            status_resp = requests.get(status_url, headers=headers, timeout=30)
+            status_resp = requests.post(status_url, headers=headers, json=status_data, timeout=30)
             print(f"🎵 [BG] Status check response: {status_resp.status_code}")
             print(f"🎵 [BG] Status check body: {status_resp.text}")
             
@@ -284,8 +279,9 @@ async def _run_riffusion_generation(prompt: str, request_id: str):
                 status_result = status_resp.json()
                 print(f"🎵 [BG] Status result: {status_result}")
                 
-                if status_result.get("status") == "completed":
-                    audio_url = status_result.get("result", {}).get("audio_url")
+                if status_result.get("status") == "complete":
+                    data_obj = status_result.get("data", {}).get("data", [{}])[0]
+                    audio_url = data_obj.get("stream_audio_url")
                     if audio_url:
                         print(f"🎵 [BG] Audio URL received: {audio_url}")
                         # --- 3. Скачивание файла ---
@@ -314,11 +310,9 @@ async def _run_riffusion_generation(prompt: str, request_id: str):
                         print(f"❌ [BG] {error_msg}")
                         raise Exception(error_msg)
                 elif status_result.get("status") == "failed":
-                    error_msg = f"Generation failed: {status_result.get('error', 'Unknown error')}"
+                    error_msg = f"Generation failed: {status_result.get('details', 'Unknown error')}"
                     print(f"❌ [BG] {error_msg}")
                     raise Exception(error_msg)
-                elif status_result.get("status") == "processing":
-                    print(f"⏳ [BG] Still processing... Progress: {status_result.get('progress', 0)}%")
                 else:
                     print(f"⏳ [BG] Status: {status_result.get('status', 'unknown')}")
         
