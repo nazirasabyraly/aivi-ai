@@ -1,7 +1,8 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, status, Form
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, status, Form, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse
 from typing import Dict, Any, List
 import json
+import uuid
 from ..services.openai_service import OpenAIService
 from ..config import MAX_FILE_SIZE, ALLOWED_EXTENSIONS
 from ..dependencies import get_current_user
@@ -203,162 +204,130 @@ def delete_chat_history(db: Session = Depends(get_db), current_user: User = Depe
     db.commit()
     return None
 
-@router.post("/generate-beat", response_model=GenerateBeatResponse)
-async def generate_beat(request: GenerateBeatRequest):
+async def _run_riffusion_generation(prompt: str, request_id: str):
     """
-    Генерирует музыку через Riffusion API по текстовому промпту.
+    Фоновая задача для генерации и скачивания музыки.
     """
     try:
-        prompt = request.prompt
-        # --- Riffusion API параметры ---
         RIFFUSION_API_KEY = os.getenv("RIFFUSION_API_KEY")
         if not RIFFUSION_API_KEY:
-            # Временно возвращаем демо-аудио вместо ошибки
-            return GenerateBeatResponse(
-                success=True, 
-                audio_url="/audio_cache/demo_beat.mp3",
-                message="Демо-режим: RIFFUSION_API_KEY не настроен"
-            )
+            print("❌ RIFFUSION_API_KEY не задан для фоновой задачи")
+            # Можно создать файл с ошибкой
+            with open(os.path.join(AUDIO_CACHE_DIR, f"{request_id}.error"), "w") as f:
+                f.write("Server not configured for music generation.")
+            return
+
+        print(f"🎵 [BG] Запускаем генерацию для request_id: {request_id}")
         
-        # Основной Riffusion API
+        # --- 1. Отправка запроса на генерацию ---
         url = "https://riffusionapi.com/api/generate-music"
-        headers = {
-            "accept": "application/json",
-            "x-api-key": RIFFUSION_API_KEY,
-            "Content-Type": "application/json"
-        }
-        data = {
-            "prompt": prompt
-        }
-        
-        # Отправляем запрос на генерацию
-        print(f"Отправляем запрос на генерацию с промптом: {prompt}")
-        resp = requests.post(url, headers=headers, json=data, timeout=120)
-        print(f"Riffusion response: {resp.status_code}, {resp.text}")
+        headers = {"accept": "application/json", "x-api-key": RIFFUSION_API_KEY, "Content-Type": "application/json"}
+        data = {"prompt": prompt}
+        resp = requests.post(url, headers=headers, json=data, timeout=30)
         
         if resp.status_code != 200:
-            return GenerateBeatResponse(success=False, error=f"Riffusion API error: {resp.text}")
+            raise Exception(f"Riffusion API initial request failed: {resp.text}")
+            
+        initial_result = resp.json()
+        riffusion_request_id = initial_result.get("request_id")
+        if not riffusion_request_id:
+            raise Exception(f"Riffusion API did not return a request_id. Response: {initial_result}")
+
+        # --- 2. Ожидание завершения генерации (Polling) ---
+        status_url = "https://riffusionapi.com/api/generate-music" # тот же URL для статуса
+        status_data = {"request_id": riffusion_request_id}
         
-        result = resp.json()
-        print("Riffusion API response:", result)
-        
-        # Проверяем статус
-        status = result.get("status")
-        if status == "pending":
-            # Асинхронная генерация - возвращаем информацию о процессе
-            request_id = result.get("request_id")
-            return GenerateBeatResponse(
-                success=True, 
-                status="pending",
-                request_id=request_id,
-                message="Генерация началась. Результат будет готов через 30-60 секунд."
-            )
-        elif status == "complete":
-            # Готовый результат
-            data = result.get("data", {})
-            if data and "data" in data and len(data["data"]) > 0:
-                audio_url = data["data"][0].get("stream_audio_url")
-                if audio_url:
-                    # Скачиваем mp3
+        for _ in range(60): # Ждем максимум 5 минут (60 * 5 сек)
+            await asyncio.sleep(5)
+            print(f"🎵 [BG] Проверяем статус для request_id: {riffusion_request_id}")
+            status_resp = requests.post(status_url, headers=headers, json=status_data, timeout=30)
+            if status_resp.status_code == 200:
+                status_result = status_resp.json()
+                if status_result.get("status") == "complete":
+                    # --- 3. Скачивание файла ---
+                    data_obj = status_result.get("data", {}).get("data", [{}])[0]
+                    audio_url = data_obj.get("stream_audio_url")
+                    if not audio_url:
+                        raise Exception("Generation complete, but no audio URL found.")
+                    
+                    print(f"🎵 [BG] Скачиваем аудио: {audio_url}")
                     audio_resp = requests.get(audio_url, timeout=120)
                     if audio_resp.status_code == 200:
-                        # Сохраняем файл
-                        import uuid
-                        filename = f"riffusion_{uuid.uuid4().hex}.mp3"
+                        filename = f"{request_id}.mp3"
                         file_path = os.path.join(AUDIO_CACHE_DIR, filename)
                         with open(file_path, "wb") as f:
                             f.write(audio_resp.content)
-                        
-                        return GenerateBeatResponse(success=True, audio_url=f"/audio_cache/{filename}")
+                        print(f"✅ [BG] Файл сохранен: {file_path}")
+                        return # Успешное завершение
                     else:
-                        return GenerateBeatResponse(success=False, error="Не удалось скачать аудио")
-                else:
-                    return GenerateBeatResponse(success=False, error="Riffusion API не вернул ссылку на аудио")
-            else:
-                return GenerateBeatResponse(success=False, error="Неожиданная структура ответа от Riffusion API")
-        elif status == "failed":
-            details = result.get("details", {})
-            error_msg = details.get("detail", "Неизвестная ошибка")
-            return GenerateBeatResponse(success=False, error=f"Ошибка генерации: {error_msg}")
-        else:
-            return GenerateBeatResponse(success=False, error=f"Неизвестный статус от Riffusion API: {status}")
-            
+                        raise Exception("Failed to download final audio file.")
+                elif status_result.get("status") == "failed":
+                    raise Exception(f"Riffusion generation failed: {status_result.get('details')}")
+        
+        raise Exception("Generation timed out after 5 minutes.")
+
     except Exception as e:
-        return GenerateBeatResponse(success=False, error=str(e))
+        print(f"❌ [BG] Ошибка в фоновой задаче {request_id}: {e}")
+        with open(os.path.join(AUDIO_CACHE_DIR, f"{request_id}.error"), "w") as f:
+            f.write(str(e))
+
+
+@router.post("/generate-beat", response_model=GenerateBeatResponse)
+async def generate_beat(request: GenerateBeatRequest, background_tasks: BackgroundTasks):
+    """
+    Запускает фоновую задачу для генерации музыки через Riffusion.
+    """
+    RIFFUSION_API_KEY = os.getenv("RIFFUSION_API_KEY")
+    if not RIFFUSION_API_KEY:
+        return GenerateBeatResponse(
+            success=True, 
+            audio_url="/audio_cache/demo_beat.mp3", # Возвращаем демо, если ключ не настроен
+            message="Демо-режим: RIFFUSION_API_KEY не настроен"
+        )
+        
+    prompt = request.prompt
+    request_id = uuid.uuid4().hex  # Генерируем уникальный ID для отслеживания
+
+    # Запускаем тяжелую задачу в фоне
+    background_tasks.add_task(asyncio.create_task, _run_riffusion_generation(prompt, request_id))
+
+    # Немедленно возвращаем ответ
+    return GenerateBeatResponse(
+        success=True, 
+        status="pending",
+        request_id=request_id,
+        message="Генерация началась. Результат будет готов через 30-60 секунд."
+    )
+
 
 @router.post("/generate-beat/status")
 async def check_generation_status(request: GenerateBeatStatusRequest):
     """
-    Проверяет статус генерации музыки
+    Проверяет статус генерации музыки по наличию файла в кеше.
     """
-    try:
-        print(f"📝 Получен запрос статуса: {request}")
-        print(f"📝 request_id: {request.request_id}")
-        
-        request_id = request.request_id
-        if not request_id:
-            print("❌ request_id не указан")
-            return JSONResponse(content={"success": False, "error": "request_id не указан"})
-            
-        RIFFUSION_API_KEY = os.getenv("RIFFUSION_API_KEY")
-        if not RIFFUSION_API_KEY:
-            print("❌ RIFFUSION_API_KEY не задан")
-            return JSONResponse(content={"success": False, "error": "RIFFUSION_API_KEY не задан"})
-        
-        print(f"Проверяем статус для request_id: {request_id}")
-        
-        # Правильный URL для проверки статуса Riffusion согласно документации
-        url = "https://riffusionapi.com/api/generate-music"
-        headers = {
-            "accept": "application/json",
-            "x-api-key": RIFFUSION_API_KEY,
-            "Content-Type": "application/json"
-        }
-        data = {
-            "request_id": request_id
-        }
-        
-        resp = requests.post(url, headers=headers, json=data, timeout=30)
-        print(f"Riffusion status response: {resp.status_code}, {resp.text}")
-        
-        if resp.status_code != 200:
-            return JSONResponse(content={"success": False, "error": f"Ошибка проверки статуса: {resp.text}"})
-        
-        result = resp.json()
-        print(f"Status check for {request_id}: {result}")
-        
-        # Если статус complete и есть audio_url, скачиваем файл
-        if result.get("status") == "complete":
-            data_obj = result.get("data", {})
-            if data_obj and "data" in data_obj and len(data_obj["data"]) > 0:
-                audio_url = data_obj["data"][0].get("stream_audio_url")
-                if audio_url:
-                    try:
-                        print(f"Скачиваем аудио файл: {audio_url}")
-                        audio_resp = requests.get(audio_url, timeout=120)
-                        if audio_resp.status_code == 200:
-                            # Сохраняем файл
-                            import uuid
-                            filename = f"riffusion_{uuid.uuid4().hex}.mp3"
-                            file_path = os.path.join(AUDIO_CACHE_DIR, filename)
-                            with open(file_path, "wb") as f:
-                                f.write(audio_resp.content)
-                            
-                            # Обновляем результат с локальным путем
-                            result["local_audio_url"] = f"/audio_cache/{filename}"
-                            print(f"Файл сохранен как: {file_path}, URL: {result['local_audio_url']}")
-                            
-                    except Exception as e:
-                        print(f"Ошибка скачивания аудио: {e}")
-        
-        print(f"Возвращаем результат: {result}")
-        return JSONResponse(content={"success": True, "status": result})
-        
-    except Exception as e:
-        print(f"Ошибка в check_generation_status: {e}")
-        import traceback
-        traceback.print_exc()
-        return JSONResponse(content={"success": False, "error": str(e)})
+    request_id = request.request_id
+    if not request_id:
+        return JSONResponse(status_code=400, content={"success": False, "error": "request_id не указан"})
+
+    # Проверяем файл с ошибкой
+    error_file = os.path.join(AUDIO_CACHE_DIR, f"{request_id}.error")
+    if os.path.exists(error_file):
+        with open(error_file, "r") as f:
+            error_msg = f.read()
+        return JSONResponse(status_code=500, content={"success": False, "status": "failed", "error": error_msg})
+
+    # Проверяем готовый mp3 файл
+    success_file = os.path.join(AUDIO_CACHE_DIR, f"{request_id}.mp3")
+    if os.path.exists(success_file):
+        return JSONResponse(content={
+            "success": True, 
+            "status": "complete",
+            "local_audio_url": f"/audio_cache/{request_id}.mp3"
+        })
+    
+    # Если файлов нет, значит, еще в процессе
+    return JSONResponse(content={"success": True, "status": "pending"})
+
 
 @router.get("/download-beat/{filename}")
 async def download_beat(filename: str):

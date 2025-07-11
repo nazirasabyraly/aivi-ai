@@ -132,3 +132,31 @@ async def get_youtube_audio(video_id: str, db: Session = Depends(get_db), curren
         raise HTTPException(status_code=500, detail=f"Failed to process audio: {str(e)}")
 
 
+@recommend_router.get("/youtube-search")
+async def search_youtube(q: str, max_results: int = 5):
+    """Поиск видео на YouTube."""
+    ydl_opts = {
+        'format': 'bestaudio',
+        'noplaylist': True,
+        'default_search': 'ytsearch',
+        'quiet': True,
+        'no_warnings': True,
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            search_results = ydl.extract_info(f"ytsearch{max_results}:{q}", download=False)
+            videos = []
+            if 'entries' in search_results:
+                for entry in search_results['entries']:
+                    videos.append({
+                        "video_id": entry.get("id"),
+                        "title": entry.get("title"),
+                        "description": entry.get("description"),
+                        "thumbnail": entry.get("thumbnail"),
+                        "channel_title": entry.get("channel"),
+                        "duration": entry.get("duration"),
+                    })
+            return {"results": videos}
+    except Exception as e:
+        log.error(f"Error searching youtube: {e}")
+        raise HTTPException(status_code=500, detail="Failed to search YouTube") 
