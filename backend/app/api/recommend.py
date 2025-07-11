@@ -90,7 +90,7 @@ if PROXY_URL:
 else:
     print('ℹ️  Прокси не настроен (PROXY_URL не задан)')
 
-# Здесь будут рекомендации через YouTube и аналитику лайков
+# Здесь будут рекомендации через YouTube и аналитика лайков
 
 @router.get("/youtube-search")
 def youtube_search(q: str = Query(..., description="Поисковый запрос (название трека, артист и т.д.)"), max_results: int = 5):
@@ -162,45 +162,62 @@ def youtube_audio(video_id: str):
         try:
             print(f"[yt-dlp] Скачиваем https://www.youtube.com/watch?v={video_id}")
             
-            # Быстрые попытки с различными настройками
-            attempts = [
-                # Попытка 1: Без прокси Android TV (быстро)
+            # Умное формирование попыток
+            attempts = []
+            if PROXY_URL:
+                print(f"💡 Обнаружен PROXY_URL. Попытки с прокси будут первыми.")
+                # Приоритет - разные клиенты через прокси
+                attempts.extend([
+                    get_ydl_options(use_proxy=True, client_type='android_tv'),
+                    get_ydl_options(use_proxy=True, client_type='ios'),
+                    get_ydl_options(use_proxy=True, client_type='web'),
+                ])
+            
+            # Добавляем стандартные попытки без прокси как запасной вариант
+            attempts.extend([
                 get_ydl_options(use_proxy=False, client_type='android_tv'),
-                # Попытка 2: Без прокси iOS (быстро)
                 get_ydl_options(use_proxy=False, client_type='ios'),
-                # Попытка 3: Без прокси Android Creator (быстро)
+                get_ydl_options(use_proxy=False, client_type='web'),
                 get_ydl_options(use_proxy=False, client_type='android_creator'),
-                # Попытка 4: С прокси Android TV (медленно, последняя надежда)
-                get_ydl_options(use_proxy=True, client_type='android_tv'),
-            ]
+            ])
+
+            # Убираем дубликаты, чтобы не пробовать одно и то же
+            unique_attempts = []
+            seen_configs = set()
+            for opts in attempts:
+                config_key = (opts.get('proxy'), opts['extractor_args']['youtube']['player_client'][0])
+                if config_key not in seen_configs:
+                    unique_attempts.append(opts)
+                    seen_configs.add(config_key)
             
             last_error = None
-            for i, attempt_opts in enumerate(attempts, 1):
+            for i, attempt_opts in enumerate(unique_attempts, 1):
                 try:
                     attempt_opts['outtmpl'] = f'{AUDIO_CACHE_DIR}/{video_id}.%(ext)s'
                     client_type = attempt_opts['extractor_args']['youtube']['player_client'][0]
                     has_proxy = 'proxy' in attempt_opts
-                    print(f"Попытка {i}: {client_type} {'с прокси' if has_proxy else 'без прокси'}")
+                    
+                    print(f"🚀 Попытка {i}/{len(unique_attempts)}: Клиент='{client_type}', Прокси={'Да' if has_proxy else 'Нет'}")
                     
                     with yt_dlp.YoutubeDL(attempt_opts) as ydl:
                         result = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=True)
                         ext = result.get('ext', 'm4a')
                         filename = f"{AUDIO_CACHE_DIR}/{video_id}.{ext}"
-                        print(f"✅ Успешно скачано с попытки {i} ({client_type})")
-                        break
+                        print(f"✅ Успешно скачано с попытки {i} (Клиент: {client_type}, Прокси: {'Да' if has_proxy else 'Нет'})")
+                        break  # Выходим из цикла при успехе
                 except Exception as e:
                     last_error = e
-                    error_short = str(e)[:100]
-                    print(f"❌ Попытка {i} не удалась: {error_short}...")
-                    
-                    # Если прокси медленный, прерываем остальные попытки с прокси
-                    if "timed out" in str(e).lower() and has_proxy:
-                        print("🚫 Прокси слишком медленный, пропускаем остальные попытки с прокси")
-                        break
-                    continue
+                    error_short = str(e).replace('\n', ' ').strip()
+                    if len(error_short) > 150:
+                       error_short = error_short[:150] + '...'
+                    print(f"❌ Попытка {i} не удалась: {error_short}")
+                    continue  # Переходим к следующей попытке
             else:
-                # Если все попытки не удались
-                raise last_error
+                # Этот блок выполнится, если цикл завершился без break (т.е. все попытки провалились)
+                if last_error:
+                    raise last_error
+                else:
+                    raise Exception("Не удалось скачать видео по неизвестной причине.")
                     
         except Exception as e:
             error_msg = str(e)
