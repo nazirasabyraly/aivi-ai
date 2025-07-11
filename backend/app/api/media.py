@@ -22,12 +22,20 @@ def get_saved_songs(db: Session = Depends(get_db), current_user: User = Depends(
 @router.post("/saved-songs", response_model=SavedSongSchema, status_code=status.HTTP_201_CREATED)
 def add_saved_song(song: SavedSongCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     # Проверяем, не сохранена ли уже эта песня у данного пользователя
-    existing_song = db.query(DBSavedSong).filter(
+    # Сначала проверяем по video_id
+    existing_song_by_video = db.query(DBSavedSong).filter(
         DBSavedSong.user_id == current_user.id,
         DBSavedSong.youtube_video_id == song.youtube_video_id
     ).first()
     
-    if existing_song:
+    # Также проверяем по title и artist, чтобы избежать дубликатов одной песни с разными video_id
+    existing_song_by_title = db.query(DBSavedSong).filter(
+        DBSavedSong.user_id == current_user.id,
+        DBSavedSong.title == song.title,
+        DBSavedSong.artist == song.artist
+    ).first()
+    
+    if existing_song_by_video or existing_song_by_title:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, 
             detail="Эта песня уже сохранена в избранном"

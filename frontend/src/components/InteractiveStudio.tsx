@@ -41,10 +41,11 @@ interface BeatsData {
 interface InteractiveStudioProps {
   onAnalysisComplete: (analysis: any) => void;
   likedSongs: Set<string>;
+  likedSongsData: any[]; // Добавляем полные данные песен
   onLikeUpdate: () => void;
 }
 
-const InteractiveStudio: React.FC<InteractiveStudioProps> = ({ onAnalysisComplete, likedSongs, onLikeUpdate }) => {
+const InteractiveStudio: React.FC<InteractiveStudioProps> = ({ onAnalysisComplete, likedSongs, likedSongsData, onLikeUpdate }) => {
   const { t, i18n } = useTranslation();
   const { user } = useUser();
   const { getToken } = useAuth();
@@ -689,6 +690,30 @@ const InteractiveStudio: React.FC<InteractiveStudioProps> = ({ onAnalysisComplet
     }
   };
 
+  // Функция для проверки, лайкнута ли песня (по названию и артисту)
+  const isSongLiked = (track: string, artist: string): boolean => {
+    const cacheKey = `${track}-${artist}`;
+    const videoId = youtubeCache[cacheKey];
+    
+    // Проверяем по video ID если он есть в кеше
+    if (videoId && likedSongs.has(videoId)) {
+      return true;
+    }
+    
+    // Проверяем по fallback ID
+    const fallbackId = `search:${track}-${artist}`;
+    if (likedSongs.has(fallbackId)) {
+      return true;
+    }
+    
+    // Проверяем по названию и артисту в сохраненных песнях
+    const isLikedByTitleArtist = likedSongsData.some(song => 
+      song.title === track && song.artist === artist
+    );
+    
+    return isLikedByTitleArtist;
+  };
+
   const resetAll = () => {
     setSelectedFile(null);
     setMoodAnalysis(null);
@@ -991,10 +1016,10 @@ const InteractiveStudio: React.FC<InteractiveStudioProps> = ({ onAnalysisComplet
                     
                     <button 
                       onClick={() => handleLike(rec.name, rec.artist)}
-                      disabled={likedSongs.has(youtubeCache[`${rec.name}-${rec.artist}`])}
-                      className={`btn btn-like ${likedSongs.has(youtubeCache[`${rec.name}-${rec.artist}`]) ? 'liked' : ''}`}
+                      disabled={isSongLiked(rec.name, rec.artist)}
+                      className={`btn btn-like ${isSongLiked(rec.name, rec.artist) ? 'liked' : ''}`}
                     >
-                      {likedSongs.has(youtubeCache[`${rec.name}-${rec.artist}`]) ? `❤️ ${t('studio_liked')}` : `❤️ ${t('studio_like')}`}
+                      {isSongLiked(rec.name, rec.artist) ? `❤️ ${t('studio_liked')}` : `❤️ ${t('studio_like')}`}
                     </button>
                   </div>
                 );

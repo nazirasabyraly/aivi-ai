@@ -27,6 +27,7 @@ const Dashboard = () => {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'studio' | 'favorites' | 'profile' | 'search'>('studio');
   const [likedSongs, setLikedSongs] = useState<Set<string>>(new Set());
+  const [likedSongsData, setLikedSongsData] = useState<any[]>([]);
   const [language, setLanguage] = useState('ru');
 
   const fetchLikedSongs = async () => {
@@ -39,6 +40,7 @@ const Dashboard = () => {
       if (response.ok) {
         const songs = await response.json();
         setLikedSongs(new Set(songs.map((s: any) => s.youtube_video_id)));
+        setLikedSongsData(songs); // Сохраняем полные данные песен
       }
     } catch (error) {
       console.error("Failed to fetch liked songs:", error);
@@ -252,7 +254,7 @@ const Dashboard = () => {
       </div>
       
       <main style={{ padding: '20px', maxWidth: '1400px', margin: '0 auto' }}>
-        {activeTab === 'studio' && <InteractiveStudio onAnalysisComplete={handleAnalysisComplete} onLikeUpdate={handleLikeUpdate} likedSongs={likedSongs} />}
+        {activeTab === 'studio' && <InteractiveStudio onAnalysisComplete={handleAnalysisComplete} onLikeUpdate={handleLikeUpdate} likedSongs={likedSongs} likedSongsData={likedSongsData} />}
         {activeTab === 'search' && <SearchPage />}
         {activeTab === 'favorites' && <Favorites onLikeUpdate={handleLikeUpdate} />}
         {activeTab === 'profile' && <Profile />}

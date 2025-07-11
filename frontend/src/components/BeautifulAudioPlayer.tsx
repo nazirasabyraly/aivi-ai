@@ -245,7 +245,7 @@ const BeautifulAudioPlayer: React.FC<BeautifulAudioPlayerProps> = ({ videoId, sr
                         <>
                             <div style={{ marginBottom: '4px' }}>⚠️ Аудио временно недоступно</div>
                             <div style={{ fontSize: '12px', opacity: 0.8 }}>
-                                YouTube ограничил доступ. Мы работаем над решением.
+                                Мы работаем над решением.
                             </div>
                         </>
                     ) : (
