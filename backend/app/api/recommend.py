@@ -3,6 +3,8 @@ import shutil
 import subprocess
 import time
 import logging
+import random
+import string
 from fastapi import APIRouter, HTTPException, Depends, Request, Query
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
@@ -83,7 +85,11 @@ def _download_with_retries(video_url: str, video_id: str):
     """Сначала быстрая попытка с прокси, если не удалась - напрямую."""
     proxy_url = None
     if proxy_config.username and proxy_config.password and proxy_config.port > 0:
-        proxy_url = f"http://{proxy_config.username}:{proxy_config.password}@{proxy_config.host}:{proxy_config.port}"
+        # --- ДОБАВЛЯЕМ ГЕНЕРАЦИЮ УНИКАЛЬНОЙ СЕССИИ ---
+        session_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
+        proxy_username = f"{proxy_config.username}-session-{session_id}"
+        proxy_url = f"http://{proxy_username}:{proxy_config.password}@{proxy_config.host}:{proxy_config.port}"
+        # ---------------------------------------------
 
     # Попытка 1: С прокси (если настроен)
     if proxy_url:
